@@ -1,0 +1,47 @@
+# InfoHUD —— Paper / Purpur 服务端插件描述文件
+# api-version 用 "1.21" 主版本形式，Paper 与 Purpur 都能识别（1.21.11 服务端同样接受）
+name: InfoHUD
+version: '${version}'
+main: dev.infohud.InfoHUD
+api-version: '1.21'
+description: 在 ActionBar 上实时显示游戏时间、现实时间、昼夜状态与生物群系
+author: AutoMods
+load: POSTWORLD
+
+# PlaceholderAPI 只是可选集成：没装也能正常跑
+softdepend:
+  - PlaceholderAPI
+
+commands:
+  infohud:
+    description: InfoHUD 主命令（重载 / 开关 HUD / 查看状态）
+    usage: |-
+      &e用法:&r
+      &7/infohud &f- 显示帮助
+      &7/infohud reload &f- 重载配置文件 &8(infohud.admin)
+      &7/infohud toggle [玩家] &f- 开关 HUD &8(infohud.use)
+      &7/infohud status &f- 查看当前 HUD 内容与运行参数
+    aliases:
+      - ihud
+      - hud
+
+permissions:
+  # 允许接收 HUD（ActionBar）推送
+  infohud.use:
+    description: 接收实时 HUD 信息，并可开关自己的 HUD
+    default: true
+  # 群系切换的聊天栏提示
+  infohud.notify:
+    description: 进入新生物群系时在聊天栏收到提示
+    default: true
+  # 管理权限：重载配置、代管其他玩家的开关
+  infohud.admin:
+    description: 允许执行 /infohud reload 以及修改其他玩家的 HUD 状态
+    default: op
+  infohud.*:
+    description: InfoHUD 全部权限
+    default: op
+    children:
+      infohud.use: true
+      infohud.notify: true
+      infohud.admin: true

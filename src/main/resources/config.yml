@@ -1,0 +1,193 @@
+# ============================================================
+#  InfoHUD 配置文件
+#  改完用 /infohud reload 生效（无需重启服务器）
+#  颜色写法两种都支持，也可以混在一行里写：
+#    传统代码 —— &a、§a、&l（0-9 a-f、k-o、r），十六进制用 &#RRGGBB
+#    MiniMessage —— <red>、<bold>、<gradient:#00ff00:#0000ff>、<click:run_command:/kit>
+#  优先级见下面 hud.text-mode
+# ============================================================
+
+hud:
+  # 玩家默认是否开启 HUD（个人开关会覆盖它，见 storage）
+  enabled-by-default: true
+
+  # ActionBar 刷新间隔（tick）。20 = 每秒一次；填小于 10 的值会被强制抬到 10（0.5 秒）
+  update-interval-ticks: 20
+
+  # 显示格式。可用占位符：
+  #   %gametime%   游戏时间 HH:MM
+  #   %realtime%   现实时间 HH:MM:SS（时区见 timezone）
+  #   %daynight%   时段标签（日出/白天/日落/黑夜，见 day-night.labels）
+  #   %biome%      当前生物群系名（见 biome-names 映射）
+  #   %biome_id%   生物群系原始英文 ID
+  #   %world%      世界名
+  #   %x% %y% %z%  玩家坐标（整数）
+  #   %ping%       玩家延迟
+  #   %tps%        服务器 TPS（保留 1 位小数）
+  display-format: "&7游戏时间 &f%gametime% &8| &7现实时间 &f%realtime% &8| &7%daynight% &8| &7群系 &f%biome%"
+
+  # 现实时间格式（Java DateTimeFormatter 模式）
+  realtime-format: "HH:mm:ss"
+
+  # 服务器时区（IANA 名称）。写错会退回系统默认时区并在控制台告警
+  timezone: "Asia/Shanghai"
+
+  # 文本解析模式：
+  #   auto        —— 自动识别：出现 MiniMessage 标签就走 MiniMessage，否则按 §/& 传统代码
+  #   legacy      —— 只按传统颜色代码解析（&a、§a、&l …）
+  #   minimessage —— 强制按 MiniMessage 解析（传统代码会被自动转换成 MiniMessage 标签）
+  text-mode: auto
+
+  # 允许在配置里写 "&a" 这种 & 开头的颜色代码（关掉后 & 只当普通字符）
+  ampersand-colors: true
+
+  # 装了 PlaceholderAPI 时，是否把 HUD 文本再交给 PAPI 解析一次
+  # （这样可以在 display-format 里写 %player_name% 等外部占位符）
+  placeholderapi-parse: true
+
+  # 每条 ActionBar 组件解析结果的缓存开关。同屏玩家文本相同时复用组件，50+ 人明显省 CPU
+  cache-components: true
+
+# ------------------------------------------------------------
+# 昼夜时段判定（tick 区间，单位与 world.getTime() 一致：0~24000）
+#   0/24000 = 06:00 日出     6000 = 12:00 正午
+#   12000 = 18:00 日落       18000 = 00:00 午夜
+# 判定优先级：日出 → 白天 → 日落 → 黑夜，全部不匹配时按“白天”兜底
+# ------------------------------------------------------------
+day-night:
+  sunrise-start: 0
+  sunrise-end: 1000
+  # 夜间尾段也算日出（原版 23000~24000 天色开始发亮）。填 -1 关闭这段回绕
+  sunrise-late-start: 22000
+  day-start: 1000
+  day-end: 11000
+  sunset-start: 11000
+  sunset-end: 13000
+  night-start: 13000
+  night-end: 23000
+
+  # 时段标签，可以直接在标签里带颜色
+  labels:
+    sunrise: "&e日出"
+    day: "&a白天"
+    sunset: "&6日落"
+    night: "&9黑夜"
+
+# ------------------------------------------------------------
+# 群系切换提示（聊天栏）
+# ------------------------------------------------------------
+biome-notification:
+  enabled: true
+
+  message-format: "&a[InfoHUD] &e已到达 &b%biome%"
+
+  # 距上次提示至少移动多少格才发提示，防止在群系交界线上反复横跳刷屏
+  # 填 0 表示每次群系变化都提示
+  min-move-distance: 5
+
+  # 同一个玩家两次群系查询的最小间隔（tick）。0 = 每次跨方块都查
+  query-cooldown-ticks: 5
+
+  # 只在区块已加载时查询群系（强烈建议保持 true：避免主线程触发区块生成）
+  loaded-chunk-only: true
+
+  # 切换世界（如下界/末地）时是否立刻提示
+  notify-on-world-change: true
+
+# ------------------------------------------------------------
+# 玩家偏好存储
+# ------------------------------------------------------------
+storage:
+  # false（默认）：偏好写到插件目录的 data.yml，config.yml 的注释不会被破坏
+  # true          ：按 Plugin#getConfig() 方式写进 config.yml 的 player-preferences 节点
+  #                 注意 Bukkit 的 saveConfig() 会重写整个 config.yml 并丢掉注释
+  preferences-in-config: false
+
+  # 偏好落盘的防抖时间（秒）。期间多次 toggle 只写一次文件
+  save-debounce-seconds: 5
+
+# ============================================================
+#  生物群系中文名映射（键为去掉 minecraft: 前缀后的 ID）
+#  没在这里配置的群系会直接显示原始英文 ID
+#  自定义群系（其他 mod/插件生成的）写法："命名空间:路径": "名字"
+# ============================================================
+biome-names:
+  # ---------- 主世界 ----------
+  ocean: "海洋"
+  plains: "平原"
+  sunflower_plains: "向日葵平原"
+  desert: "沙漠"
+  desert_hills: "沙漠丘陵"          # 1.18 前的旧 ID，保留兼容
+  forest: "森林"
+  flower_forest: "花林"
+  birch_forest: "白桦森林"
+  old_growth_birch_forest: "原始白桦森林"
+  dark_forest: "黑森林"
+  swamp: "沼泽"
+  mangrove_swamp: "红树林沼泽"
+  river: "河流"
+  frozen_river: "冰封河流"
+  beach: "沙滩"
+  snowy_beach: "积雪沙滩"
+  stony_shore: "石岸"
+  savanna: "热带草原"
+  savanna_plateau: "热带草原高原"
+  windswept_savanna: "风袭热带草原"
+  jungle: "丛林"
+  sparse_jungle: "疏林丛林"
+  bamboo_jungle: "竹丛"
+  taiga: "针叶林"
+  snowy_taiga: "雪原针叶林"
+  old_growth_pine_taiga: "原始松树针叶林"
+  old_growth_spruce_taiga: "原始云杉针叶林"
+  grove: "雪林"
+  cherry_grove: "樱花树林"
+  pale_garden: "暗影花园"
+  meadow: "草甸"
+  snowy_plains: "雪原"
+  snowy_tundra: "雪原"              # 1.18 前的旧 ID，保留兼容
+  snowy_slopes: "积雪山坡"
+  ice_spikes: "冰刺"
+  badlands: "恶地"
+  eroded_badlands: "侵蚀恶地"
+  wooded_badlands: "森林化恶地"
+  mushroom_fields: "蘑菇岛"
+  windswept_forest: "风袭森林"
+  windswept_hills: "风袭丘陵"
+  windswept_gravelly_hills: "风袭砂砾丘陵"
+  # ---------- 山地 / 洞穴 ----------
+  mountains: "山脉"                 # 旧 ID（1.18 前），保留兼容
+  stony_peaks: "石质山峰"
+  jagged_peaks: "尖锐山峰"
+  frozen_peaks: "冰封山峰"
+  lush_caves: "繁茂洞穴"
+  dripstone_caves: "溶洞"
+  deep_dark: "深邃黑暗"
+  # ---------- 海洋 ----------
+  cold_ocean: "寒冷海洋"
+  lukewarm_ocean: "温和海洋"
+  warm_ocean: "温暖海洋"
+  frozen_ocean: "冰封海洋"
+  deep_ocean: "深海"
+  deep_cold_ocean: "寒冷深海"
+  deep_frozen_ocean: "冰封深海"
+  deep_lukewarm_ocean: "温和深海"
+  # ---------- 下界 ----------
+  nether_wastes: "下界荒原"
+  crimson_forest: "绯红森林"
+  warped_forest: "诡异森林"
+  soul_sand_valley: "灵魂沙峡谷"
+  basalt_deltas: "玄武岩三角洲"
+  # ---------- 末地 ----------
+  the_end: "末地"
+  end_highlands: "末地高地"
+  end_midlands: "末地中部"
+  end_barrens: "末地荒凉之地"
+  small_end_islands: "末地小岛"
+  the_void: "虚空"
+
+# ============================================================
+#  玩家偏好（仅当 storage.preferences-in-config: true 时使用）
+#  由插件自动写入，形如 "uuid": true/false，不用手工维护
+# ============================================================
+player-preferences: {}

@@ -1,12 +1,18 @@
 # InfoHUD
 
-轻量级 **服务端** 实时信息 HUD 插件：在玩家屏幕下方的 ActionBar 上持续显示
+轻量级 **服务端** 实时信息 HUD 插件，两块显示区**各自独立开关**：
+
+**底部 ActionBar（信息栏）** 持续显示
 
 1. 游戏内时间（24 小时制 `HH:MM`）
 2. 现实世界时间（服务器时区，`HH:MM:SS`）
 3. 当前时段（日出 / 白天 / 日落 / 黑夜，边界可配）
 4. 玩家当前所处生物群系（中文映射可配）
-5. 进入新群系时在聊天栏推送提示（带刷屏抑制）
+5. 进入新群系时在屏幕中央大字提示（默认，停留 3s；可改回聊天栏）
+
+**顶部 BossBar（罗盘）** 持续显示方向指示
+
+6. 以当前朝向为中心的 180° 刻度窗口：N/E/S/W + 30° 角度数字 + 5° 圆点，正中高亮刻度即方向，进度条位置即指针，随玩家视角转向实时更新
 
 **客户端不需要安装任何东西**，原版客户端即可看到全部信息。目标服务端：Purpur 1.21.11，同 jar 兼容 Paper 1.21.11。
 
@@ -30,22 +36,25 @@
 | --- | --- | --- |
 | `/infohud` | 显示帮助 | — |
 | `/infohud reload` | 重载 `config.yml`，并按新间隔重启刷新任务 | `infohud.admin` |
-| `/infohud toggle` | 开 / 关自己的 HUD（个人偏好会落盘） | `infohud.use` |
-| `/infohud toggle <玩家>` | 代管其他玩家的开关 | `infohud.admin` |
-| `/infohud status` | 查看运行参数、当前群系与 ActionBar 预览 | 无（游戏内执行才有个人数据） |
+| `/infohud toggle` | 开 / 关自己的**底部信息栏**（个人偏好会落盘） | `infohud.use` |
+| `/infohud toggle compass` | 开 / 关自己的**顶部罗盘**（与底部信息栏独立） | `infohud.compass` |
+| `/infohud toggle <compass\|actionbar> <玩家>` | 代管其他玩家的开关 | `infohud.admin` |
+| `/infohud status` | 查看运行参数、当前群系、ActionBar 预览与罗盘预览 | 无（游戏内执行才有个人数据） |
 
-别名：`/ihud`、`/hud`。命令带 Tab 补全（`toggle` 会列出在线玩家）。
+别名：`/ihud`、`/hud`。命令带 Tab 补全（`toggle` 会列出开关对象与在线玩家）。
 
 ## 三、权限节点
 
 | 节点 | 默认 | 作用 |
 | --- | --- | --- |
-| `infohud.use` | 所有人 | 接收 ActionBar HUD；可开关自己的 HUD |
-| `infohud.notify` | 所有人 | 进入新群系时接收聊天栏提示 |
+| `infohud.use` | 所有人 | 接收底部 ActionBar 信息栏；可开关自己的信息栏 |
+| `infohud.compass` | 所有人 | 接收顶部 BossBar 罗盘；可开关自己的罗盘 |
+| `infohud.notify` | 所有人 | 进入新群系时接收提示（屏幕中央大字或聊天栏，取决于 `biome-notification.mode`） |
 | `infohud.admin` | OP | `/infohud reload`、代管他人开关 |
 | `infohud.*` | OP | 以上全部 |
 
-没有 `infohud.use` 的玩家不会被推送任何 ActionBar 消息（任务直接跳过，不产生开销）。
+没有 `infohud.use` 的玩家不会被推送任何 ActionBar 消息；没有 `infohud.compass` 的玩家不会生成 BossBar（任务直接跳过，不产生开销）。
+两者互不影响——可以在 `permissions` 里单独关掉某个部件。
 
 ---
 
@@ -97,7 +106,10 @@ day-night:
 ```yaml
 biome-notification:
   enabled: true
-  message-format: "&a[InfoHUD] &e已到达 &b%biome%"
+  mode: center                        # center = 屏幕中央大字（默认）；chat = 聊天栏消息
+  message-format: "&a[InfoHUD] &e已到达 &b%biome%"   # mode=chat 时使用
+  center-title: "&e进入 &b%biome%"    # mode=center 时中央大字标题
+  center-duration-seconds: 3          # 中央大字停留秒数（1~10）
   min-move-distance: 5        # 距上次提示至少走 5 格才发，防交界线刷屏
   query-cooldown-ticks: 5     # 每名玩家两次群系查询的最小间隔（0 = 每次跨方块都查）
   loaded-chunk-only: true     # 只在区块已加载时查询，绝不触发区块生成
@@ -107,6 +119,12 @@ storage:
   preferences-in-config: false  # true 时偏好写进 config.yml（会丢失注释，见下）
   save-debounce-seconds: 5      # 多次 toggle 合并成一次写盘
 ```
+
+- **默认在屏幕中央大字提示**（`mode: center`）：进入新群系时以 title 形式显示 `center-title`
+  文案（无 subtitle），停留 `center-duration-seconds` 秒（默认 3，范围 1~10 自动夹取）。
+  文案支持占位符 `%biome%`、`%biome_id%`、`%player%`，颜色写法与 `display-format` 完全一致
+  （传统 `&`/`§` 代码或 MiniMessage 标签，由 `hud.text-mode` 决定解析方式）。
+- 想要旧的聊天栏效果：`mode: chat`，此时只使用 `message-format`。
 
 - **首次进服不会弹提示**：玩家上线（或 `/infohud reload`）时只建立群系基线，不发消息。
 - **换世界与传送会正确刷新**：过下界门/末地门、`/tp`、`/spawn` 之后约 1 秒内重取群系；
@@ -120,9 +138,41 @@ storage:
 
 关于 `preferences-in-config`：默认 `false`，个人开关存在 `plugins/InfoHUD/data.yml`，
 由 Bukkit `saveConfig()` 写回 `config.yml` 会**抹掉整个文件的注释**，所以只在需要
-严格用 `Plugin#getConfig()` 持久化时才打开。
+严格用 `Plugin#getConfig()` 持久化时才打开。个人开关现在分两条（`action-bar` / `compass`）
+分别落盘；旧版单开关数据（`<uuid>: true`）加载时只作用于底部信息栏，罗盘跟随配置默认值。
 
-### 4.4 颜色格式
+### 4.4 `compass`（顶部 BossBar 罗盘）
+
+```yaml
+compass:
+  enabled-by-default: true      # 玩家默认是否开启罗盘（个人开关会覆盖它，见 storage）
+  update-interval-ticks: 2     # 罗盘刷新间隔（tick），1 = 跟视角实时转
+  boss-bar-color: WHITE        # BossBar 颜色（RED/GREEN/YELLOW/BLUE/PURPLE/PINK/WHITE）
+  boss-bar-style: SEGMENTED_10 # 样式，SEGMENTED_10 自带 10 段刻度（SOLID/SEGMENTED_6/10/12/20）
+```
+
+- 罗盘显示在屏幕**顶部 BossBar**：标题是**以当前朝向为中心的 180° 刻度窗口**（37 格 × 5°），
+  **正中一格的高亮刻度就是当前朝向**——落在正南北东西时是金色方向字 `N/E/S/W`，
+  落在 30° 倍数时是角度数字，其余角度就是一根青色加粗的圆点。
+  刻度读出方式：`W ∙∙∙∙∙ 300 ∙∙∙∙∙ 330 ∙∙∙∙∙ N ∙∙∙∙∙ 30 ∙∙∙∙∙ 60 ∙∙∙∙∙ E`
+  （每 30° 一个数字、每 5° 一个圆点）。进度条位置同样是指针（北 = 0%、东 = 25%、南 = 50%、西 = 75%）。
+  - **角度数字是自然位宽**（`30`/`60` 两位，`330`/`120` 三位）。
+  - **高亮几乎严格居中**：客户端按整体像素宽度居中标题，而 180° 窗口的每半边恰好含
+    1 个方位字 + 2 个数字 + 15 个圆点，半宽只可能是 120/126/132px（都是 6 的倍数）。
+    由于空格是 4px，**数学上无法精确等宽**；实现里把较窄的一边用空格补到最接近，
+    残留误差 ≤ 2px（高亮偏移 ≤ 1px，肉眼不可见）。不补的话最多会偏 6px。
+    补位空格只贴在最外侧，刻度之间不会出现空隙。
+  - 标题**不再单独显示当前角度数字**：方向看正中高亮那一格即可。
+  - **转向时刻度整体平移**，数字与方向字依次滑过窗口，看起来就像罗盘在转。
+  - 刻度字形（`∙`）与方向字母、数字**等宽**（都是 6 像素，实测原版 `ascii.png`）。
+- **随视角转向更新**：每轮只读玩家自带的 yaw；标题按 5° 刻度、进度按 1° 分别判定，
+  各自没变就不发包（站桩零开销）。
+- **与底部信息栏完全独立**：
+  - 配置：`compass.enabled-by-default` 只管罗盘，`hud.enabled-by-default` 只管信息栏；
+  - 权限：`infohud.compass` 与 `infohud.use` 互不影响；
+  - 玩家开关：`/infohud toggle compass` 与 `/infohud toggle` 各切各的。
+
+### 4.5 颜色格式
 
 同一行里可以混写传统代码和 MiniMessage 标签：
 
@@ -136,7 +186,7 @@ display-format: "<gradient:#00ffcc:#0088ff>时间</gradient> &f%gametime% &8| &a
 - `text-mode: minimessage` —— 强制 MiniMessage。
 - 十六进制：传统写法 `&#RRGGBB`，或 MiniMessage 的 `<color:#RRGGBB>`。
 
-### 4.5 占位符
+### 4.6 占位符
 
 | 占位符 | 含义 | 示例 |
 | --- | --- | --- |
@@ -151,7 +201,7 @@ display-format: "<gradient:#00ffcc:#0088ff>时间</gradient> &f%gametime% &8| &a
 | `%tps%` | 服务器 TPS（1 分钟窗口） | `20.0` |
 | `%player%` | 玩家名（仅提示模板） | `Steve` |
 
-提示模板 `biome-notification.message-format` 支持 `%biome%`、`%biome_id%`、`%player%`。
+提示模板（`message-format` 与 `center-title`）支持 `%biome%`、`%biome_id%`、`%player%`。
 
 ---
 
@@ -180,14 +230,15 @@ display-format: "<gradient:#00ffcc:#0088ff>时间</gradient> &f%gametime% &8| &a
 
 | 环节 | 做法 |
 | --- | --- |
-| 刷新频率 | 主线程任务，默认 20 tick，**硬下限 10 tick**（不可能配置成每 tick 刷屏） |
+| 刷新频率 | 信息栏主线程任务默认 20 tick（**硬下限 10**）；罗盘独立任务默认 2 tick，仅读 yaw 零区块访问 |
 | 游戏时间 | 启动时预生成 24000 条 `HH:MM` 文本表，运行期只做数组下标访问 |
 | 世界级数值 | 游戏时间/时段**按世界**每轮算一次，同世界玩家复用 |
 | 现实时间 / TPS | 每轮只算一次，与玩家数无关 |
 | 群系查询 | 不在 HUD 任务里查区块：只在“玩家确实跨方块”（`PlayerMoveEvent#hasChangedBlock()`，O(1) 早退）+“每玩家查询冷却到期”时读一次，且限定已加载区块 |
+| 罗盘（BossBar） | 标题按 5° 刻度（整圈 72 种缓存复用）、进度按 1° 判定，各自未变时零网络包；仅离线/关开关时关闭 BossBar |
 | 组件解析 | 同轮内文本相同直接复用同一个不可变 `Component`；`Component` 不可变，复用安全 |
 | 磁盘 IO | 偏好写盘防抖合并；`data.yml` 走异步线程写，主线程零阻塞 |
-| 内存 | 玩家离线即清理群系缓存；只有个人偏好按 UUID 长期保留（每人一个布尔值） |
+| 内存 | 玩家离线即清理群系缓存与 BossBar；只有个人偏好按 UUID 长期保留（每人两条布尔值） |
 
 主线程上跑的仍然是 `World#getTime()`、`sendActionBar()` 这类必须在主线程的调用；
 把群系查询彻底挪到异步需要跨线程读区块，在 Paper 上反而不安全，因此采用“缓存 + 节流”。
@@ -221,6 +272,8 @@ src/main/java/dev/infohud/
   time/DayNightPhase.java                     时段枚举
   util/BiomeUtil.java                         群系读取、ID 与显示名
   biome/BiomeService.java                     群系缓存、切换判定、提示发送
+  compass/CompassService.java               每玩家独占 BossBar + 方位角缓存
+  compass/CompassTask.java                    主线程定时刷新顶部罗盘
   hud/HudTask.java                            BukkitRunnable 刷新任务
   hud/HudRenderer.java                        占位符填充 + 组件复用
   hud/HudContext.java / WorldSnapshot.java    每轮公共上下文 / 世界快照
@@ -240,6 +293,11 @@ src/test/java/…                               时间换算、时段判定、�
 **Q：进服没有 HUD？**
 A：依次检查 —— 控制台是否有 `InfoHUD v1.0.0 已启用`；玩家是否有 `infohud.use`；
 是否被 `/infohud toggle` 关掉过（`/infohud status` 会显示“个人设置”还是“跟随默认值”）。
+顶部罗盘同理：看 `infohud.compass` 与 `/infohud toggle compass`。
+
+**Q：顶部罗盘指针和文字哪个准？**
+A：两者是同一朝向的两种读法：进度条位置是指针（北 0% / 东 25% / 南 50% / 西 75%），
+标题正中那一格的高亮刻度是同方向的刻度读法。想让转屏更跟手，把 `compass.update-interval-ticks` 调到 1。
 
 **Q：现实时间不对？**
 A：改 `hud.timezone`，用 IANA 名称（`Asia/Shanghai`、`UTC`、`Asia/Tokyo`）。写错会回退系统时区，

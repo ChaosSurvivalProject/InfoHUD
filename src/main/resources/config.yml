@@ -74,12 +74,28 @@ day-night:
     night: "&9黑夜"
 
 # ------------------------------------------------------------
-# 群系切换提示（聊天栏）
+# 群系切换提示
 # ------------------------------------------------------------
 biome-notification:
   enabled: true
 
+  # 展示方式：
+  #   chat   —— 聊天栏消息（message-format）
+  #   center —— 屏幕中央大字（title/subtitle，默认）
+  mode: center
+
+  # mode=chat 时使用的聊天栏文案
   message-format: "&a[InfoHUD] &e已到达 &b%biome%"
+
+  # mode=center 时使用的中央大字标题，支持占位符：
+  #   %biome%     群系显示名
+  #   %biome_id%  群系原始英文 ID
+  #   %player%    玩家名
+  # 可用同样的颜色代码 / MiniMessage 标签
+  center-title: "&e进入 &b%biome%"
+
+  # mode=center 时大字在屏幕上停留的秒数（1~10，超出范围会被夹回）
+  center-duration-seconds: 3
 
   # 距上次提示至少移动多少格才发提示，防止在群系交界线上反复横跳刷屏
   # 填 0 表示每次群系变化都提示
@@ -93,6 +109,68 @@ biome-notification:
 
   # 切换世界（如下界/末地）时是否立刻提示
   notify-on-world-change: true
+
+# ------------------------------------------------------------
+# 顶部 BossBar 罗盘（方向指示：以朝向为中心的 180° 刻度窗口）
+# 刻度：N/E/S/W 方位字 + 30° 角度数字（如 30/60/330）+ 5° 圆点
+# 进度条位置即指针：北 = 0%、东 = 25%、南 = 50%、西 = 75%
+# 正中一格的高亮刻度就是当前朝向，不再单独显示角度数字
+# 随玩家视角转向自动更新；与底部信息栏完全独立开关
+#   /infohud toggle          切底部信息栏
+#   /infohud toggle compass  切顶部罗盘
+# ------------------------------------------------------------
+compass:
+  # 玩家默认是否开启罗盘（个人开关会覆盖它，见 storage）
+  enabled-by-default: true
+
+  # 罗盘刷新间隔（tick）。1 = 跟视角实时转；调大可进一步降低主线程开销
+  update-interval-ticks: 2
+
+  # BossBar 颜色（RED / GREEN / YELLOW / BLUE / PURPLE / PINK / WHITE）
+  boss-bar-color: WHITE
+
+  # BossBar 样式（SOLID / SEGMENTED_6 / SEGMENTED_10 / SEGMENTED_12 / SEGMENTED_20）
+  # SEGMENTED_10 自带 10 段刻度
+  boss-bar-style: SEGMENTED_10
+
+# ------------------------------------------------------------
+# 受击生物血条（每个被玩家攻击的生物一条独立 BossBar）
+# 玩家攻击生物（近战，或玩家射出的箭/弩箭/雪球/药水等投射物）时生成血条显示给全部
+# 在线玩家，停留 time 个 tick（默认 100 = 5 秒）后自动消失；期间再被攻击会刷新内容与
+# 倒计时，死亡时切换为 title.dead 模板
+# 注意：自然掉血（摔落/火焰/溺水/窒息/虚空）与怪物互殴等非玩家来源不显示血条
+# 标题占位符（MiniMessage 标签与 & 颜色代码可混用；& 代码是否生效见 hud.ampersand-colors）：
+#   <entity>  生物的原版翻译名（translatable 组件，客户端按自己语言渲染成"末影人/Enderman"）
+#   <name>    生物自定义名；没有名字时显示 <entity>
+#   <health>  当前生命值（死亡显示 0）
+#   <max>     最大生命值
+#   <damage>  本次受到的最终伤害（已扣护甲等修正）
+# ------------------------------------------------------------
+bar:
+  # 血条显示总开关（关掉后不再生成血条；reload 会摘掉已显示的血条）
+  enabled: true
+
+  title:
+    living: "<gray><health>/<max> <reset><name> -<damage><red>♥"
+    dead: "<gray><health>/<max> <dark_gray>☠ <name> ☠ <reset>-<damage><red>♥"
+
+  # BossBar 样式。Adventure 名与 Bukkit 名都认，一一对应：
+  #   PROGRESS=SOLID、NOTCHED_6/10/12/20 = SEGMENTED_6/10/12/20
+  overlay: PROGRESS
+
+  # BossBar 颜色（RED / GREEN / YELLOW / BLUE / PURPLE / PINK / WHITE）
+  color: RED
+
+  # 血条停留时间（tick，20 = 1 秒，100 = 5 秒；范围 20~2000）
+  time: 100
+
+# 血条黑名单：名单内的实体类型不显示血条
+# （实体类型名，大小写不敏感，可带 minecraft: 前缀）
+blacklist:
+  - ENDER_DRAGON
+  - WITHER
+  - PLAYER
+  - ARMOR_STAND
 
 # ------------------------------------------------------------
 # 玩家偏好存储

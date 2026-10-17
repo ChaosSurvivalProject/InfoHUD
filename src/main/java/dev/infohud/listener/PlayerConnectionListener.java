@@ -1,6 +1,7 @@
 package dev.infohud.listener;
 
 import java.util.List;
+import java.util.UUID;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -47,10 +48,12 @@ public final class PlayerConnectionListener implements Listener {
         }, PRIME_DELAY_TICKS);
     }
 
-    /** 玩家离线：清理群系缓存与移动锚点（个人偏好由 {@code PreferenceStore} 持久化）。 */
+    /** 玩家离线：清理群系缓存、移动锚点与顶部罗盘 BossBar（个人偏好由 {@code PreferenceStore} 持久化）。 */
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        plugin.biomes().forget(event.getPlayer().getUniqueId());
+        UUID id = event.getPlayer().getUniqueId();
+        plugin.biomes().forget(id);
+        plugin.compass().closeFor(id);
     }
 
     /**

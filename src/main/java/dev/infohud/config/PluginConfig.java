@@ -5,10 +5,15 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.Logger;
 
+import org.bukkit.boss.BarColor;
+import org.bukkit.boss.BarStyle;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 
@@ -47,14 +52,49 @@ public final class PluginConfig {
         }
     }
 
+    /** 群系切换提示的展示方式。 */
+    public enum NotificationMode {
+        /** 聊天栏消息。 */
+        CHAT,
+        /** 屏幕中央大字（title/subtitle）。 */
+        CENTER;
+
+        static NotificationMode parse(String raw, Logger logger) {
+            if (raw == null) {
+                return CENTER;
+            }
+            try {
+                return valueOf(raw.trim().toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException ex) {
+                if (logger != null) {
+                    logger.warning("biome-notification.mode 取值 \"" + raw + "\" 无效（可用 chat/center），已按 center 处理。");
+                }
+                return CENTER;
+            }
+        }
+    }
+
     /** 性能红线：ActionBar 最快 0.5 秒刷一次。 */
     public static final int MIN_INTERVAL_TICKS = 10;
+
+    private static final String DEFAULT_CENTER_TITLE = "&e进入 &b%biome%";
+    private static final int DEFAULT_CENTER_DURATION_SECONDS = 3;
 
     private static final String DEFAULT_DISPLAY_FORMAT =
             "&7游戏时间 &f%gametime% &8| &7现实时间 &f%realtime% &8| &7%daynight% &8| &7群系 &f%biome%";
     private static final String DEFAULT_NOTIFY_FORMAT = "&a[InfoHUD] &e已到达 &b%biome%";
     private static final String DEFAULT_REALTIME_PATTERN = "HH:mm:ss";
     private static final String FALLBACK_ZONE = "UTC";
+
+    // ---- bar（受击生物血条）----
+    private static final String DEFAULT_BAR_LIVING_TITLE = "<gray><health>/<max> <reset><name> -<damage><red>♥";
+    private static final String DEFAULT_BAR_DEAD_TITLE =
+            "<gray><health>/<max> <dark_gray>☠ <name> ☠ <reset>-<damage><red>♥";
+    private static final int DEFAULT_BAR_TIME_TICKS = 100;
+    private static final int MIN_BAR_TIME_TICKS = 20;
+    private static final int MAX_BAR_TIME_TICKS = 2000;
+    private static final List<String> DEFAULT_BAR_BLACKLIST =
+            List.of("ENDER_DRAGON", "WITHER", "PLAYER", "ARMOR_STAND");
 
     // ---- hud ----
     private final boolean enabledByDefault;
@@ -73,10 +113,28 @@ public final class PluginConfig {
     // ---- biome-notification ----
     private final boolean notifyEnabled;
     private final String notifyFormat;
+    private final NotificationMode notifyMode;
+    private final String centerTitle;
+    private final int centerDurationSeconds;
     private final double minMoveDistance;
     private final int queryCooldownTicks;
     private final boolean loadedChunkOnly;
     private final boolean notifyOnWorldChange;
+
+    // ---- compass ----
+    private final boolean compassEnabledByDefault;
+    private final int compassUpdateIntervalTicks;
+    private final BarColor compassColor;
+    private final BarStyle compassStyle;
+
+    // ---- bar（受击生物血条）----
+    private final boolean healthBarEnabled;
+    private final String healthBarLivingTitle;
+    private final String healthBarDeadTitle;
+    private final BarStyle healthBarOverlay;
+    private final BarColor healthBarColor;
+    private final int healthBarTimeTicks;
+    private final Set<String> healthBarBlacklist;
 
     // ---- storage ----
     private final boolean preferencesInConfig;
@@ -122,12 +180,40 @@ public final class PluginConfig {
         this.notifyEnabled = config.getBoolean("biome-notification.enabled", true);
         String notifyFormatRaw = config.getString("biome-notification.message-format", DEFAULT_NOTIFY_FORMAT);
         this.notifyFormat = (notifyFormatRaw == null || notifyFormatRaw.isEmpty()) ? DEFAULT_NOTIFY_FORMAT : notifyFormatRaw;
+        this.notifyMode = NotificationMode.parse(
+                config.getString("biome-notification.mode", "center"), logger);
+        String centerTitleRaw = config.getString("biome-notification.center-title", DEFAULT_CENTER_TITLE);
+        this.centerTitle = (centerTitleRaw == null || centerTitleRaw.isEmpty()) ? DEFAULT_CENTER_TITLE : centerTitleRaw;
+        this.centerDurationSeconds = clamp(config.getInt("biome-notification.center-duration-seconds",
+                DEFAULT_CENTER_DURATION_SECONDS), 1, 10);
         double distance = config.getDouble("biome-notification.min-move-distance", 5.0D);
         this.minMoveDistance = distance < 0 ? 0 : distance;
         int cooldown = config.getInt("biome-notification.query-cooldown-ticks", 5);
         this.queryCooldownTicks = clamp(cooldown, 0, 100);
         this.loadedChunkOnly = config.getBoolean("biome-notification.loaded-chunk-only", true);
         this.notifyOnWorldChange = config.getBoolean("biome-notification.notify-on-world-change", true);
+
+        // ---------- compass ----------
+        this.compassEnabledByDefault = config.getBoolean("compass.enabled-by-default", true);
+        int compassInterval = config.getInt("compass.update-interval-ticks", 2);
+        this.compassUpdateIntervalTicks = clamp(compassInterval, 1, 200);
+        this.compassColor = parseBarColor(config.getString("compass.boss-bar-color", "WHITE"),
+                "compass.boss-bar-color", BarColor.WHITE, logger);
+        this.compassStyle = parseBarStyle(config.getString("compass.boss-bar-style", "SEGMENTED_10"), logger);
+
+        // ---------- bar（受击生物血条）----------
+        this.healthBarEnabled = config.getBoolean("bar.enabled", true);
+        String livingTitle = config.getString("bar.title.living", DEFAULT_BAR_LIVING_TITLE);
+        this.healthBarLivingTitle = (livingTitle == null || livingTitle.isEmpty()) ? DEFAULT_BAR_LIVING_TITLE : livingTitle;
+        String deadTitle = config.getString("bar.title.dead", DEFAULT_BAR_DEAD_TITLE);
+        this.healthBarDeadTitle = (deadTitle == null || deadTitle.isEmpty()) ? DEFAULT_BAR_DEAD_TITLE : deadTitle;
+        this.healthBarOverlay = parseBarOverlay(config.getString("bar.overlay", "PROGRESS"), logger);
+        this.healthBarColor = parseBarColor(config.getString("bar.color", "RED"), "bar.color", BarColor.RED, logger);
+        this.healthBarTimeTicks = clamp(config.getInt("bar.time", DEFAULT_BAR_TIME_TICKS),
+                MIN_BAR_TIME_TICKS, MAX_BAR_TIME_TICKS);
+        List<String> rawBlacklist = config.getStringList("blacklist");
+        this.healthBarBlacklist = readBarBlacklist(
+                rawBlacklist.isEmpty() ? DEFAULT_BAR_BLACKLIST : rawBlacklist);
 
         // ---------- storage ----------
         this.preferencesInConfig = config.getBoolean("storage.preferences-in-config", false);
@@ -214,6 +300,93 @@ public final class PluginConfig {
         return Math.max(min, Math.min(max, value));
     }
 
+    /** BossBar 颜色；写错回退 {@code fallback} 并告警。 */
+    private static BarColor parseBarColor(String raw, String configKey, BarColor fallback, Logger logger) {
+        if (raw == null) {
+            return fallback;
+        }
+        try {
+            return BarColor.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            if (logger != null) {
+                logger.warning(configKey + "=\"" + raw + "\" 无效（可用 RED/GREEN/YELLOW/BLUE/PURPLE/PINK/WHITE），已按 "
+                        + fallback + " 处理。");
+            }
+            return fallback;
+        }
+    }
+
+    /**
+     * 血条样式（{@code bar.overlay}）：同时接受参考配置的 Adventure 名
+     * （PROGRESS / NOTCHED_6/10/12/20）与 Bukkit 原生名（SOLID / SEGMENTED_*），
+     * 两者一一对应；写错回退 PROGRESS（实心）并告警。
+     */
+    private static BarStyle parseBarOverlay(String raw, Logger logger) {
+        String value = raw == null ? "" : raw.trim().toUpperCase(Locale.ROOT);
+        switch (value) {
+            case "":
+            case "PROGRESS":
+            case "SOLID":
+                return BarStyle.SOLID;
+            case "NOTCHED_6":
+            case "SEGMENTED_6":
+                return BarStyle.SEGMENTED_6;
+            case "NOTCHED_10":
+            case "SEGMENTED_10":
+                return BarStyle.SEGMENTED_10;
+            case "NOTCHED_12":
+            case "SEGMENTED_12":
+                return BarStyle.SEGMENTED_12;
+            case "NOTCHED_20":
+            case "SEGMENTED_20":
+                return BarStyle.SEGMENTED_20;
+            default:
+                if (logger != null) {
+                    logger.warning("bar.overlay=\"" + raw + "\" 无效"
+                            + "（可用 PROGRESS/SOLID、NOTCHED_6/10/12/20 或 SEGMENTED_6/10/12/20），已按 PROGRESS 处理。");
+                }
+                return BarStyle.SOLID;
+        }
+    }
+
+    /**
+     * 血条黑名单归一化：大小写不敏感、容忍 {@code minecraft:} 前缀，统一转大写存表。
+     * 匹配端（{@code HealthBarService}）把实体类型的 {@code name()} 转大写后查这张表。
+     */
+    private static Set<String> readBarBlacklist(List<String> raw) {
+        Set<String> result = new LinkedHashSet<>();
+        for (String entry : raw) {
+            if (entry == null) {
+                continue;
+            }
+            String value = entry.trim();
+            if (value.isEmpty()) {
+                continue;
+            }
+            int colon = value.indexOf(':');
+            if (colon >= 0 && value.substring(0, colon).equalsIgnoreCase("minecraft")) {
+                value = value.substring(colon + 1);
+            }
+            result.add(value.toUpperCase(Locale.ROOT));
+        }
+        return result.isEmpty() ? Collections.emptySet() : Collections.unmodifiableSet(result);
+    }
+
+    /** BossBar 样式；写错回退 SEGMENTED_10 并告警。 */
+    private static BarStyle parseBarStyle(String raw, Logger logger) {
+        if (raw == null) {
+            return BarStyle.SEGMENTED_10;
+        }
+        try {
+            return BarStyle.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            if (logger != null) {
+                logger.warning("compass.boss-bar-style=\"" + raw + "\" 无效（可用 SOLID/SEGMENTED_6/SEGMENTED_10/SEGMENTED_12/SEGMENTED_20），已按 SEGMENTED_10 处理。");
+            }
+            return BarStyle.SEGMENTED_10;
+        }
+    }
+
     // ------------------------- getters -------------------------
 
     public boolean enabledByDefault() {
@@ -264,6 +437,19 @@ public final class PluginConfig {
         return notifyFormat;
     }
 
+    public NotificationMode notifyMode() {
+        return notifyMode;
+    }
+
+    public String centerTitle() {
+        return centerTitle;
+    }
+
+    /** 中央大字提示的停留时长（秒，1~10）。 */
+    public int centerDurationSeconds() {
+        return centerDurationSeconds;
+    }
+
     public double minMoveDistance() {
         return minMoveDistance;
     }
@@ -278,6 +464,57 @@ public final class PluginConfig {
 
     public boolean notifyOnWorldChange() {
         return notifyOnWorldChange;
+    }
+
+    /** 顶部罗盘的默认开关（玩家个人开关可覆盖，见 storage）。 */
+    public boolean compassEnabledByDefault() {
+        return compassEnabledByDefault;
+    }
+
+    /** 顶部罗盘刷新间隔（tick）。 */
+    public int compassUpdateIntervalTicks() {
+        return compassUpdateIntervalTicks;
+    }
+
+    public BarColor compassColor() {
+        return compassColor;
+    }
+
+    public BarStyle compassStyle() {
+        return compassStyle;
+    }
+
+    /** 受击生物血条总开关。 */
+    public boolean healthBarEnabled() {
+        return healthBarEnabled;
+    }
+
+    /** 存活状态血条标题模板（占位符见 {@code config.yml} 的 bar 注释）。 */
+    public String healthBarLivingTitle() {
+        return healthBarLivingTitle;
+    }
+
+    /** 死亡状态血条标题模板。 */
+    public String healthBarDeadTitle() {
+        return healthBarDeadTitle;
+    }
+
+    public BarStyle healthBarOverlay() {
+        return healthBarOverlay;
+    }
+
+    public BarColor healthBarColor() {
+        return healthBarColor;
+    }
+
+    /** 血条停留时长（tick，已夹在 20~2000）。 */
+    public int healthBarTimeTicks() {
+        return healthBarTimeTicks;
+    }
+
+    /** 血条黑名单（大写归一化后的实体类型名；空表 = 不过滤）。 */
+    public Set<String> healthBarBlacklist() {
+        return healthBarBlacklist;
     }
 
     public boolean preferencesInConfig() {

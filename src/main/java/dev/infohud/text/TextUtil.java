@@ -98,8 +98,11 @@ public final class TextUtil {
      *   <li>文本里本来就写对的 MiniMessage 标签（{@code <gradient:...>} 等）原样透传，
      *       其余位置的 {@code <} 转义为 {@code \<}，避免被误解析。</li>
      * </ul>
+     *
+     * <p>包外使用方：血条标题（{@code dev.infohud.bar}）先把 {@code &} 代码展开，
+     * 再整条交给带自定义占位符标签的 MiniMessage 解析。</p>
      */
-    static String expandLegacy(String raw, boolean allowAmpersand) {
+    public static String expandLegacy(String raw, boolean allowAmpersand) {
         StringBuilder out = new StringBuilder(raw.length() + 32);
         StringBuilder segment = new StringBuilder(raw.length());
         List<String> formats = new ArrayList<>(4);

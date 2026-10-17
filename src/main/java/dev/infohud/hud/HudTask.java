@@ -50,7 +50,7 @@ public final class HudTask extends BukkitRunnable {
                 if (!player.hasPermission(Permissions.USE)) {
                     continue;
                 }
-                if (!plugin.preferences().enabled(player.getUniqueId(), config.enabledByDefault())) {
+                if (!plugin.preferences().actionBar(player.getUniqueId(), config.enabledByDefault())) {
                     continue;
                 }
                 Biome biome = plugin.biomes().currentBiome(player, config);

@@ -8,10 +8,14 @@ import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
+import dev.infohud.bar.HealthBarService;
+import dev.infohud.bar.HealthBarSweepTask;
 import dev.infohud.biome.BiomeService;
+import dev.infohud.compass.CompassService;
 import dev.infohud.command.InfoHUDCommand;
 import dev.infohud.config.PluginConfig;
 import dev.infohud.config.PreferenceStore;
+import dev.infohud.compass.CompassTask;
 import dev.infohud.hud.HudRenderer;
 import dev.infohud.hud.HudTask;
 import dev.infohud.listener.PlayerConnectionListener;
@@ -22,16 +26,22 @@ import dev.infohud.placeholder.InfoHUDExpansion;
  * InfoHUD 主类。
  *
  * <p>轻量级实时信息 HUD：在 ActionBar 上持续显示游戏时间、现实时间、昼夜时段与当前生物群系，
- * 并在玩家进入新群系时发一条聊天栏提示。纯服务端插件，客户端无需安装任何东西。</p>
+ * 在顶部 BossBar 上显示方向罗盘（NSWE + 角度 + 刻度，随视角转向更新），
+ * 为受击生物显示独立 BossBar 血条（停留数秒后自动消失，仅玩家攻击时触发），
+ * 并在玩家进入新群系时发提示。纯服务端插件，客户端无需安装任何东西。</p>
  *
  * <p>运行结构：</p>
  * <pre>
  *   InfoHUD (JavaPlugin)
  *     ├─ PluginConfig          不可变配置快照，reload 时整体替换（volatile）
- *     ├─ PreferenceStore       UUID → 是否开启 HUD（ConcurrentHashMap + 防抖落盘）
+ *     ├─ PreferenceStore       UUID → 底部信息栏/顶部罗盘独立开关（ConcurrentHashMap + 防抖落盘）
  *     ├─ BiomeService          UUID → 上次群系缓存 + 切换提示判定
  *     ├─ HudTask (BukkitRunnable)  主线程定时刷新 ActionBar
  *     │    └─ HudRenderer      占位符替换 + 组件复用缓存
+ *     ├─ CompassTask (BukkitRunnable)  主线程定时刷新顶部 BossBar 罗盘
+ *     │    └─ CompassService   每玩家独占 BossBar + 方位角缓存
+ *     ├─ HealthBarSweepTask (BukkitRunnable)  定时清扫到期的受击血条
+ *     │    └─ HealthBarService  伤害/死亡事件 → 每生物独占 BossBar 血条
  *     ├─ PlayerMoveListener    仅跨方块时触发群系复检
  *     ├─ PlayerConnectionListener 上线建基线 / 离线清理 / 换世界重建
  *     └─ InfoHUDExpansion      PlaceholderAPI 可选集成
@@ -45,9 +55,17 @@ public final class InfoHUD extends JavaPlugin {
     private PreferenceStore preferences;
     private BiomeService biomes;
     private HudRenderer renderer;
+    private CompassService compass;
+    private HealthBarService healthBars;
 
     /** HUD 刷新任务句柄。 */
     private BukkitTask hudTask;
+
+    /** 顶部罗盘刷新任务句柄。 */
+    private BukkitTask compassTask;
+
+    /** 血条清扫任务句柄。 */
+    private BukkitTask healthBarTask;
 
     /** 是否可用 PlaceholderAPI（软依赖）。 */
     private volatile boolean placeholderApiReady;
@@ -59,6 +77,8 @@ public final class InfoHUD extends JavaPlugin {
         this.preferences = new PreferenceStore(this);
         this.biomes = new BiomeService();
         this.renderer = new HudRenderer(this);
+        this.compass = new CompassService();
+        this.healthBars = new HealthBarService(this);
 
         try {
             this.preferences.load();
@@ -70,6 +90,7 @@ public final class InfoHUD extends JavaPlugin {
         pluginManager.registerEvents(new PlayerMoveListener(this), this);
         pluginManager.registerEvents(new PlayerConnectionListener(this), this);
         pluginManager.registerEvents(this.preferences, this);
+        pluginManager.registerEvents(this.healthBars, this);
 
         PluginCommand command = getCommand("infohud");
         if (command == null) {
@@ -87,22 +108,34 @@ public final class InfoHUD extends JavaPlugin {
         this.biomes.prime(Bukkit.getOnlinePlayers(), this.config);
 
         startHudTask();
+        startCompassTask();
+        startHealthBarTask();
 
         getLogger().info("InfoHUD v" + pluginVersion() + " 已启用："
-                + "刷新 " + config.updateIntervalTicks() + " tick"
+                + "底部信息栏刷新 " + config.updateIntervalTicks() + " tick"
+                + "，顶部罗盘刷新 " + config.compassUpdateIntervalTicks() + " tick"
                 + "，时区 " + config.timezone().getId()
                 + "，群系映射 " + config.biomeNameCount() + " 条"
+                + "，受击血条" + (config.healthBarEnabled() ? " 开（停留 " + config.healthBarTimeTicks() + " tick）" : " 关")
                 + (placeholderApiReady ? "，已对接 PlaceholderAPI" : ""));
     }
 
     @Override
     public void onDisable() {
         stopHudTask();
+        stopCompassTask();
+        stopHealthBarTask();
         if (preferences != null) {
             preferences.shutdown();
         }
         if (biomes != null) {
             biomes.forgetAll();
+        }
+        if (compass != null) {
+            compass.closeAll();
+        }
+        if (healthBars != null) {
+            healthBars.closeAll();
         }
     }
 
@@ -118,6 +151,11 @@ public final class InfoHUD extends JavaPlugin {
         this.biomes.resetCooldown();
         this.biomes.prime(Bukkit.getOnlinePlayers(), this.config);
         restartHudTask();
+        // 罗盘的颜色/样式可能变化：清掉旧 BossBar，下一轮按新配置重建
+        this.compass.closeAll();
+        restartCompassTask();
+        // 血条样式/开关可能变化：摘掉现有血条，下次受击按新配置重建
+        this.healthBars.closeAll();
     }
 
     /** 检测并注册 PlaceholderAPI 扩展。 */
@@ -159,6 +197,37 @@ public final class InfoHUD extends JavaPlugin {
         }
     }
 
+    /** 启动顶部罗盘刷新任务。 */
+    private void startCompassTask() {
+        int interval = config.compassUpdateIntervalTicks();
+        this.compassTask = new CompassTask(this).runTaskTimer(this, interval, interval);
+    }
+
+    /** 重启用顶部罗盘刷新任务（reload 后应用新的间隔）。 */
+    private void restartCompassTask() {
+        stopCompassTask();
+        startCompassTask();
+    }
+
+    private void stopCompassTask() {
+        if (compassTask != null) {
+            compassTask.cancel();
+            compassTask = null;
+        }
+    }
+
+    /** 启动血条清扫任务（固定 20 tick 一轮；血条表为空时空转，开销可忽略）。 */
+    private void startHealthBarTask() {
+        this.healthBarTask = new HealthBarSweepTask(this).runTaskTimer(this, 20, 20);
+    }
+
+    private void stopHealthBarTask() {
+        if (healthBarTask != null) {
+            healthBarTask.cancel();
+            healthBarTask = null;
+        }
+    }
+
     // --------------------------- getters ---------------------------
 
     /** 当前配置快照（只读）。 */
@@ -176,6 +245,14 @@ public final class InfoHUD extends JavaPlugin {
 
     public HudRenderer renderer() {
         return renderer;
+    }
+
+    public CompassService compass() {
+        return compass;
+    }
+
+    public HealthBarService healthBars() {
+        return healthBars;
     }
 
     /** PlaceholderAPI 是否可用（决定 {@code PapiBridge} 能否被加载）。 */

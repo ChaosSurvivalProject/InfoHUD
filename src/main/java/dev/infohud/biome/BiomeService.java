@@ -1,5 +1,6 @@
 package dev.infohud.biome;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -15,6 +16,7 @@ import dev.infohud.config.PluginConfig;
 import dev.infohud.text.TextUtil;
 import dev.infohud.util.BiomeUtil;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.title.Title;
 
 /**
  * 玩家群系状态跟踪：缓存上一次群系、判定是否切换、按距离阈值发提示。
@@ -31,6 +33,9 @@ import net.kyori.adventure.text.Component;
  *
  * <p>刷屏抑制的细节：玩家在“距上次提示不足 min-move-distance”时跨进新群系，提示不会丢，
  * 而是挂到 {@code pending}，等走够距离补发 —— 既不高频刷屏，也不会“换了群系完全没提示”。</p>
+ *
+ * <p>切换提示按 {@code biome-notification.mode} 展示：{@code chat} 走聊天栏消息，
+ * {@code center}（默认）走屏幕中央大字（title/subtitle），停留 {@code center-duration-seconds}（默认 3s）。</p>
  *
  * <p>跨世界注意：Bukkit 的 {@code Location#distanceSquared} 在两个坐标属于不同世界时直接抛
  * {@code IllegalArgumentException}，所以所有距离判定都必须先确认同世界。</p>
@@ -221,13 +226,26 @@ public final class BiomeService {
         return from.distanceSquared(to) >= minDistance * minDistance;
     }
 
-    /** 发送聊天栏提示。 */
+    /** 发送提示：按配置选择聊天栏消息或屏幕中央大字。 */
     private void sendNotification(Player player, Biome biome, PluginConfig config) {
+        String name = BiomeUtil.displayName(biome, config);
+        if (config.notifyMode() == PluginConfig.NotificationMode.CENTER) {
+            Component title = TextUtil.parse(
+                    TextUtil.fill(config.centerTitle(),
+                            "%biome%", name,
+                            "%biome_id%", BiomeUtil.idOf(biome),
+                            "%player%", player.getName()),
+                    config);
+            int staySeconds = config.centerDurationSeconds();
+            player.showTitle(Title.title(title, Component.empty(),
+                    Title.Times.times(Duration.ofSeconds(1),
+                            Duration.ofSeconds(staySeconds), Duration.ofSeconds(1))));
+            return;
+        }
         String filled = TextUtil.fill(config.notifyFormat(),
-                "%biome%", BiomeUtil.displayName(biome, config),
+                "%biome%", name,
                 "%biome_id%", BiomeUtil.idOf(biome),
                 "%player%", player.getName());
-        Component message = TextUtil.parse(filled, config);
-        player.sendMessage(message);
+        player.sendMessage(TextUtil.parse(filled, config));
     }
 }

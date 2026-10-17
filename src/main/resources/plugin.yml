@@ -4,7 +4,7 @@ name: InfoHUD
 version: '${version}'
 main: dev.infohud.InfoHUD
 api-version: '1.21'
-description: 在 ActionBar 上实时显示游戏时间、现实时间、昼夜状态与生物群系
+description: 在 ActionBar 上实时显示游戏时间、现实时间、昼夜状态与生物群系，在顶部 BossBar 显示方向罗盘，为受击生物显示独立 BossBar 血条
 author: AutoMods
 load: POSTWORLD
 
@@ -14,12 +14,14 @@ softdepend:
 
 commands:
   infohud:
-    description: InfoHUD 主命令（重载 / 开关 HUD / 查看状态）
+    description: InfoHUD 主命令（重载 / 开关信息栏与罗盘 / 查看状态）
     usage: |-
       &e用法:&r
       &7/infohud &f- 显示帮助
       &7/infohud reload &f- 重载配置文件 &8(infohud.admin)
-      &7/infohud toggle [玩家] &f- 开关 HUD &8(infohud.use)
+      &7/infohud toggle &f- 开关底部信息栏 &8(infohud.use)
+      &7/infohud toggle compass &f- 开关顶部罗盘 &8(infohud.compass)
+      &7/infohud toggle <compass|actionbar> [玩家] &f- 代管他人 &8(infohud.admin)
       &7/infohud status &f- 查看当前 HUD 内容与运行参数
     aliases:
       - ihud
@@ -28,11 +30,15 @@ commands:
 permissions:
   # 允许接收 HUD（ActionBar）推送
   infohud.use:
-    description: 接收实时 HUD 信息，并可开关自己的 HUD
+    description: 接收底部信息栏 HUD，并可开关自己的信息栏
     default: true
-  # 群系切换的聊天栏提示
+  # 允许接收顶部 BossBar 罗盘（方向指示），与信息栏独立开关
+  infohud.compass:
+    description: 接收顶部方向罗盘，并可开关自己的罗盘
+    default: true
+  # 群系切换提示
   infohud.notify:
-    description: 进入新生物群系时在聊天栏收到提示
+    description: 进入新生物群系时收到提示
     default: true
   # 管理权限：重载配置、代管其他玩家的开关
   infohud.admin:
@@ -43,5 +49,6 @@ permissions:
     default: op
     children:
       infohud.use: true
+      infohud.compass: true
       infohud.notify: true
       infohud.admin: true

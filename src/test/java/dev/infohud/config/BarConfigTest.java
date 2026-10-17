@@ -20,11 +20,12 @@ import dev.infohud.TestConfigs;
 class BarConfigTest {
 
     @Test
-    @DisplayName("缺省配置：血条开、100 tick、RED、PROGRESS(实心)、默认黑名单 4 项")
+    @DisplayName("缺省配置：血条开、存活 3 秒 / 死亡 1 秒、RED、PROGRESS(实心)、默认黑名单 4 项")
     void defaultsWhenSectionMissing() {
         PluginConfig config = TestConfigs.config("");
         assertTrue(config.healthBarEnabled());
-        assertEquals(100, config.healthBarTimeTicks());
+        assertEquals(60, config.healthBarTimeTicks());
+        assertEquals(20, config.healthBarDeadTimeTicks());
         assertEquals(BarColor.RED, config.healthBarColor());
         assertEquals(BarStyle.SOLID, config.healthBarOverlay());
         assertEquals(Set.of("ENDER_DRAGON", "WITHER", "PLAYER", "ARMOR_STAND"),
@@ -61,11 +62,27 @@ class BarConfigTest {
     }
 
     @Test
-    @DisplayName("time 被夹在 20~2000 之间")
+    @DisplayName("time / dead-time 各自被夹在 20~2000 之间，且互相独立")
     void timeClamped() {
         assertEquals(20, TestConfigs.config("bar:\n  time: 1\n").healthBarTimeTicks());
         assertEquals(2000, TestConfigs.config("bar:\n  time: 99999\n").healthBarTimeTicks());
         assertEquals(60, TestConfigs.config("bar:\n  time: 60\n").healthBarTimeTicks());
+        // 死亡时长单独配置，不跟着 time 走
+        PluginConfig custom = TestConfigs.config("bar:\n  time: 200\n  dead-time: 40\n");
+        assertEquals(200, custom.healthBarTimeTicks());
+        assertEquals(40, custom.healthBarDeadTimeTicks());
+        // 只改 time 时 death 保持默认 1 秒
+        assertEquals(20, TestConfigs.config("bar:\n  time: 200\n").healthBarDeadTimeTicks());
+    }
+
+    @Test
+    @DisplayName("dead-time 也被夹在 20~2000；默认比存活时长短")
+    void deadTimeClampedAndShorter() {
+        assertEquals(20, TestConfigs.config("bar:\n  dead-time: 5\n").healthBarDeadTimeTicks());
+        assertEquals(2000, TestConfigs.config("bar:\n  dead-time: 99999\n").healthBarDeadTimeTicks());
+        PluginConfig config = TestConfigs.config("");
+        assertTrue(config.healthBarDeadTimeTicks() <= config.healthBarTimeTicks(),
+                "默认死亡展示时间不应长于存活展示时间");
     }
 
     @Test

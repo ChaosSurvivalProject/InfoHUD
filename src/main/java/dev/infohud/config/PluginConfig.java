@@ -52,24 +52,57 @@ public final class PluginConfig {
         }
     }
 
-    /** 群系切换提示的展示方式。 */
+    /**
+     * 群系切换提示的展示方式，由 {@code biome-notification.mode} 一处配置决定。
+     *
+     * <p>三项分别是：{@link #TITLE}（屏幕中央大字）、{@link #CHAT}（聊天栏消息）、
+     * {@link #OFF}（关闭，完全不提示）。{@link #OFF} 与旧的 {@code enabled: false}
+     * 语义相同，两种写法都认，效果一致。</p>
+     */
     public enum NotificationMode {
+        /** 屏幕中央大字（title）。 */
+        TITLE,
         /** 聊天栏消息。 */
         CHAT,
-        /** 屏幕中央大字（title/subtitle）。 */
-        CENTER;
+        /** 关闭：不展示任何群系切换提示。 */
+        OFF;
 
+        /**
+         * 解析配置值。除了三个正式名字，还认一批常见别名与旧写法，
+         * 避免升级后配置直接失效：
+         * <ul>
+         *   <li>{@code title} —— 正式名；兼容旧的 {@code center}；</li>
+         *   <li>{@code chat} —— 正式名；兼容 {@code message}/{@code actionbar}；</li>
+         *   <li>{@code off} —— 正式名；兼容 {@code none}/{@code false}/{@code disabled}/{@code close}。</li>
+         * </ul>
+         * 空值按默认 {@link #TITLE}；无法识别时告警并回退 {@link #TITLE}。
+         */
         static NotificationMode parse(String raw, Logger logger) {
             if (raw == null) {
-                return CENTER;
+                return TITLE;
             }
-            try {
-                return valueOf(raw.trim().toUpperCase(Locale.ROOT));
-            } catch (IllegalArgumentException ex) {
-                if (logger != null) {
-                    logger.warning("biome-notification.mode 取值 \"" + raw + "\" 无效（可用 chat/center），已按 center 处理。");
-                }
-                return CENTER;
+            String value = raw.trim().toLowerCase(Locale.ROOT);
+            switch (value) {
+                case "":
+                case "title":
+                case "center":
+                    return TITLE;
+                case "chat":
+                case "message":
+                    return CHAT;
+                case "off":
+                case "none":
+                case "false":
+                case "disabled":
+                case "disable":
+                case "close":
+                    return OFF;
+                default:
+                    if (logger != null) {
+                        logger.warning("biome-notification.mode 取值 \"" + raw
+                                + "\" 无效（可用 title / chat / off），已按 title 处理。");
+                    }
+                    return TITLE;
             }
         }
     }
@@ -77,8 +110,15 @@ public final class PluginConfig {
     /** 性能红线：ActionBar 最快 0.5 秒刷一次。 */
     public static final int MIN_INTERVAL_TICKS = 10;
 
-    private static final String DEFAULT_CENTER_TITLE = "&e进入 &b%biome%";
+    private static final String DEFAULT_CENTER_TITLE = "&b%biome%";
     private static final int DEFAULT_CENTER_DURATION_SECONDS = 3;
+    /** 群系记忆默认时长：同一个群系 5 分钟内不再重复展示。 */
+    private static final int DEFAULT_MEMORY_SECONDS = 300;
+    /**
+     * 群系记忆上限：24 小时。再长的“冷却”等于永久静默，没有实际意义，
+     * 还容易让人误以为提示坏了，所以直接在解析时夹住。
+     */
+    private static final int MAX_MEMORY_SECONDS = 86_400;
 
     private static final String DEFAULT_DISPLAY_FORMAT =
             "&7游戏时间 &f%gametime% &8| &7现实时间 &f%realtime% &8| &7%daynight% &8| &7群系 &f%biome%";
@@ -86,11 +126,21 @@ public final class PluginConfig {
     private static final String DEFAULT_REALTIME_PATTERN = "HH:mm:ss";
     private static final String FALLBACK_ZONE = "UTC";
 
+    /**
+     * 旧版默认中央大字模板。老服务器上的 config.yml 是 {@code saveDefaultConfig()} 生成的，
+     * 升级插件不会覆盖它，所以碰到这个“原封不动的旧默认值”时按新默认（只显示群系名）处理，
+     * 免得用户升级后还是看到“进入”。用户自己改过模板则完全尊重原样。
+     */
+    private static final String LEGACY_CENTER_TITLE = "&e进入 &b%biome%";
+
     // ---- bar（受击生物血条）----
     private static final String DEFAULT_BAR_LIVING_TITLE = "<gray><health>/<max> <reset><name> -<damage><red>♥";
     private static final String DEFAULT_BAR_DEAD_TITLE =
             "<gray><health>/<max> <dark_gray>☠ <name> ☠ <reset>-<damage><red>♥";
-    private static final int DEFAULT_BAR_TIME_TICKS = 100;
+    /** 存活血条默认停留 3 秒。 */
+    private static final int DEFAULT_BAR_TIME_TICKS = 60;
+    /** 死亡血条默认只停留 1 秒（不需要盯着看，看完就该消失）。 */
+    private static final int DEFAULT_BAR_DEAD_TIME_TICKS = 20;
     private static final int MIN_BAR_TIME_TICKS = 20;
     private static final int MAX_BAR_TIME_TICKS = 2000;
     private static final List<String> DEFAULT_BAR_BLACKLIST =
@@ -116,6 +166,7 @@ public final class PluginConfig {
     private final NotificationMode notifyMode;
     private final String centerTitle;
     private final int centerDurationSeconds;
+    private final int memorySeconds;
     private final double minMoveDistance;
     private final int queryCooldownTicks;
     private final boolean loadedChunkOnly;
@@ -135,6 +186,7 @@ public final class PluginConfig {
     private final BarStyle healthBarOverlay;
     private final BarColor healthBarColor;
     private final int healthBarTimeTicks;
+    private final int healthBarDeadTimeTicks;
     private final Set<String> healthBarBlacklist;
 
     // ---- storage ----
@@ -178,15 +230,27 @@ public final class PluginConfig {
         this.dayNightRules = DayNightRules.fromSection(dayNight);
 
         // ---------- biome-notification ----------
-        this.notifyEnabled = config.getBoolean("biome-notification.enabled", true);
+        // 展示方式一处配置搞定：title / chat / off。
+        // 旧的 enabled: false 与 mode: off 等价，两者归一到同一个"有效模式"上，
+        // 后续判断只看 notifyMode()，避免两处开关互相打架。
+        NotificationMode parsedMode = NotificationMode.parse(
+                config.getString("biome-notification.mode", "title"), logger);
+        boolean enabledFlag = config.getBoolean("biome-notification.enabled", true);
+        this.notifyMode = enabledFlag ? parsedMode : NotificationMode.OFF;
+        this.notifyEnabled = this.notifyMode != NotificationMode.OFF;
         String notifyFormatRaw = config.getString("biome-notification.message-format", DEFAULT_NOTIFY_FORMAT);
         this.notifyFormat = (notifyFormatRaw == null || notifyFormatRaw.isEmpty()) ? DEFAULT_NOTIFY_FORMAT : notifyFormatRaw;
-        this.notifyMode = NotificationMode.parse(
-                config.getString("biome-notification.mode", "center"), logger);
         String centerTitleRaw = config.getString("biome-notification.center-title", DEFAULT_CENTER_TITLE);
-        this.centerTitle = (centerTitleRaw == null || centerTitleRaw.isEmpty()) ? DEFAULT_CENTER_TITLE : centerTitleRaw;
+        if (centerTitleRaw == null || centerTitleRaw.isEmpty()
+                || centerTitleRaw.trim().equals(LEGACY_CENTER_TITLE)) {
+            // 空值 = 没配；旧默认值 = 老版本的“进入 xxx”，统一换成只显示群系名的新默认
+            centerTitleRaw = DEFAULT_CENTER_TITLE;
+        }
+        this.centerTitle = centerTitleRaw;
         this.centerDurationSeconds = clamp(config.getInt("biome-notification.center-duration-seconds",
                 DEFAULT_CENTER_DURATION_SECONDS), 1, 10);
+        this.memorySeconds = clamp(config.getInt("biome-notification.memory-seconds",
+                DEFAULT_MEMORY_SECONDS), 0, MAX_MEMORY_SECONDS);
         double distance = config.getDouble("biome-notification.min-move-distance", 5.0D);
         this.minMoveDistance = distance < 0 ? 0 : distance;
         int cooldown = config.getInt("biome-notification.query-cooldown-ticks", 5);
@@ -214,6 +278,8 @@ public final class PluginConfig {
         this.healthBarOverlay = parseBarOverlay(config.getString("bar.overlay", "PROGRESS"), logger);
         this.healthBarColor = parseBarColor(config.getString("bar.color", "RED"), "bar.color", BarColor.RED, logger);
         this.healthBarTimeTicks = clamp(config.getInt("bar.time", DEFAULT_BAR_TIME_TICKS),
+                MIN_BAR_TIME_TICKS, MAX_BAR_TIME_TICKS);
+        this.healthBarDeadTimeTicks = clamp(config.getInt("bar.dead-time", DEFAULT_BAR_DEAD_TIME_TICKS),
                 MIN_BAR_TIME_TICKS, MAX_BAR_TIME_TICKS);
         List<String> rawBlacklist = config.getStringList("blacklist");
         this.healthBarBlacklist = readBarBlacklist(
@@ -433,6 +499,13 @@ public final class PluginConfig {
         return dayNightRules;
     }
 
+    /**
+     * 群系提示是否开启。
+     *
+     * <p>等价于 {@code notifyMode() != OFF}：{@code mode: off} 与 {@code enabled: false}
+     * 两种写法都会被归一成关闭。判断“要不要发提示”建议直接用这个方法，
+     * 判断“用哪种方式发”再用 {@link #notifyMode()}。</p>
+     */
     public boolean notifyEnabled() {
         return notifyEnabled;
     }
@@ -441,6 +514,7 @@ public final class PluginConfig {
         return notifyFormat;
     }
 
+    /** 群系切换提示的展示方式；关闭时为 {@link NotificationMode#OFF}。 */
     public NotificationMode notifyMode() {
         return notifyMode;
     }
@@ -452,6 +526,20 @@ public final class PluginConfig {
     /** 中央大字提示的停留时长（秒，1~10）。 */
     public int centerDurationSeconds() {
         return centerDurationSeconds;
+    }
+
+    /**
+     * 群系记忆时长（秒，0 ~ 86400）：同一个群系在这个时间内已经展示过，就不再重复展示。
+     *
+     * <p>{@code 0} 表示关闭记忆（每次进入群系都提示）。记忆只存在内存里，不落盘。</p>
+     */
+    public int memorySeconds() {
+        return memorySeconds;
+    }
+
+    /** 群系记忆时长换算成毫秒（内部统一用毫秒比较）。 */
+    public long memoryMillis() {
+        return memorySeconds * 1000L;
     }
 
     public double minMoveDistance() {
@@ -521,9 +609,14 @@ public final class PluginConfig {
         return healthBarColor;
     }
 
-    /** 血条停留时长（tick，已夹在 20~2000）。 */
+    /** 血条停留时长（tick，已夹在 20~2000）；存活血条的默认展示时间。 */
     public int healthBarTimeTicks() {
         return healthBarTimeTicks;
+    }
+
+    /** 死亡血条停留时长（tick，已夹在 20~2000）；比存活血条短，默认 1 秒。 */
+    public int healthBarDeadTimeTicks() {
+        return healthBarDeadTimeTicks;
     }
 
     /** 血条黑名单（大写归一化后的实体类型名；空表 = 不过滤）。 */

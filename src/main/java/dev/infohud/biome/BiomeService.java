@@ -34,8 +34,14 @@ import net.kyori.adventure.title.Title;
  * <p>刷屏抑制的细节：玩家在“距上次提示不足 min-move-distance”时跨进新群系，提示不会丢，
  * 而是挂到 {@code pending}，等走够距离补发 —— 既不高频刷屏，也不会“换了群系完全没提示”。</p>
  *
- * <p>切换提示按 {@code biome-notification.mode} 展示：{@code chat} 走聊天栏消息，
- * {@code center}（默认）走屏幕中央大字（title/subtitle），停留 {@code center-duration-seconds}（默认 3s）。</p>
+ * <p>群系记忆（{@link BiomeMemory}）：同一个群系在 {@code biome-notification.memory-seconds}
+ * 内已经展示过，就不再重复展示 —— 在平原/森林之间来回走动不会反复弹同一个名字。
+ * 记忆只存在内存里，玩家下线即清理，不落盘。</p>
+ *
+ * <p>切换提示的展示方式由 {@code biome-notification.mode} 一处决定：
+ * {@code title}（默认，屏幕中央大字，停留 {@code center-duration-seconds}，默认 3s）、
+ * {@code chat}（聊天栏消息）、{@code off}（关闭，完全不提示；等价于旧的
+ * {@code enabled: false}）。</p>
  *
  * <p>跨世界注意：Bukkit 的 {@code Location#distanceSquared} 在两个坐标属于不同世界时直接抛
  * {@code IllegalArgumentException}，所以所有距离判定都必须先确认同世界。</p>
@@ -49,6 +55,8 @@ public final class BiomeService {
     private final Map<UUID, Biome> pending = new ConcurrentHashMap<>();
     /** 挂起提示的起始坐标（用来量“还需要走多远”）。 */
     private final Map<UUID, Location> pendingFrom = new ConcurrentHashMap<>();
+    /** 群系记忆：某群系最近一次展示的时刻，冷却期内不再重复展示（纯内存）。 */
+    private final BiomeMemory memory = new BiomeMemory();
 
     /**
      * 玩家移动（监听器已过滤为“确实跨了方块”）时调用。
@@ -102,7 +110,7 @@ public final class BiomeService {
         if (readyToNotify(player, anchor, config)) {
             anchors.put(id, player.getLocation());
             clearPending(id);
-            sendNotification(player, current, config);
+            notifyOnceRemembered(player, current, config);
         } else {
             // 暂时不满足条件：先记下，之后走够距离补发（HUD 立刻就是新群系，不受影响）
             pending.put(id, current);
@@ -124,17 +132,26 @@ public final class BiomeService {
         return lastBiome.get(playerId);
     }
 
+    /** 该玩家已记住多少个群系（{@code /infohud status} 展示用）。 */
+    public int memorySize(UUID playerId) {
+        return memory.size(playerId);
+    }
+
     /** 玩家离线：清掉所有状态，避免 UUID 表无限增长。 */
     public void forget(UUID playerId) {
         lastBiome.remove(playerId);
         lastCheckTick.remove(playerId);
         anchors.remove(playerId);
         clearPending(playerId);
+        // 群系记忆不落盘，玩家下线即丢弃（下次上线当成“没来过”）
+        memory.forget(playerId);
     }
 
     /** 重载配置：清掉冷却，让下一次移动立刻按新参数重新对齐。 */
     public void resetCooldown() {
         lastCheckTick.clear();
+        // reload 后按新的 memory-seconds 重新计数，避免旧记忆把新配置“吃掉”
+        memory.clear();
     }
 
     /** 插件停用：清掉全部缓存，避免热重载后残留。 */
@@ -144,6 +161,7 @@ public final class BiomeService {
         anchors.clear();
         pending.clear();
         pendingFrom.clear();
+        memory.clear();
     }
 
     /** 启动 / reload 后为在线玩家建立群系基线（不发提示）。 */
@@ -210,7 +228,7 @@ public final class BiomeService {
         pending.remove(id);
         pendingFrom.remove(id);
         anchors.put(id, player.getLocation());
-        sendNotification(player, waiting, config);
+        notifyOnceRemembered(player, waiting, config);
     }
 
     private void clearPending(UUID id) {
@@ -226,10 +244,33 @@ public final class BiomeService {
         return from.distanceSquared(to) >= minDistance * minDistance;
     }
 
-    /** 发送提示：按配置选择聊天栏消息或屏幕中央大字。 */
+    /**
+     * 按“群系记忆”决定要不要展示，展示后立刻记下时刻。
+     *
+     * <p>记忆粒度是 <b>玩家 + 群系</b>：同一个群系在 {@code memory-seconds} 内只展示一次；
+     * 中途去过别的群系也不会重置计时（想要“必须离开过才重算”的语义很容易反过来把提示吞掉，
+     * 这里选更可预期的超时制）。{@code memory-seconds = 0} 即完全关闭记忆。</p>
+     */
+    private void notifyOnceRemembered(Player player, Biome biome, PluginConfig config) {
+        UUID id = player.getUniqueId();
+        String biomeId = BiomeUtil.idOf(biome);
+        long now = System.currentTimeMillis();
+        if (memory.tooSoon(id, biomeId, now, config.memoryMillis())) {
+            return;
+        }
+        memory.remember(id, biomeId, now);
+        sendNotification(player, biome, config);
+    }
+
+    /** 发送提示：按配置选择屏幕中央大字或聊天栏消息。 */
     private void sendNotification(Player player, Biome biome, PluginConfig config) {
+        PluginConfig.NotificationMode mode = config.notifyMode();
+        if (mode == PluginConfig.NotificationMode.OFF) {
+            // 兜底：正常流程里 notifyEnabled() 已经拦过，这里再挡一次，防止将来漏判
+            return;
+        }
         String name = BiomeUtil.displayName(biome, config);
-        if (config.notifyMode() == PluginConfig.NotificationMode.CENTER) {
+        if (mode == PluginConfig.NotificationMode.TITLE) {
             Component title = TextUtil.parse(
                     TextUtil.fill(config.centerTitle(),
                             "%biome%", name,
@@ -242,6 +283,7 @@ public final class BiomeService {
                             Duration.ofSeconds(staySeconds), Duration.ofSeconds(1))));
             return;
         }
+        // 走到这里只可能是 CHAT：OFF 在调用前就被 notifyEnabled() 拦掉了
         String filled = TextUtil.fill(config.notifyFormat(),
                 "%biome%", name,
                 "%biome_id%", BiomeUtil.idOf(biome),

@@ -77,25 +77,34 @@ day-night:
 # 群系切换提示
 # ------------------------------------------------------------
 biome-notification:
+  # 总开关。留 true 即可：具体展示方式由下面的 mode 决定（mode: off 与 enabled: false 等价）
   enabled: true
 
-  # 展示方式：
-  #   chat   —— 聊天栏消息（message-format）
-  #   center —— 屏幕中央大字（title/subtitle，默认）
-  mode: center
+  # 展示方式，三选一：
+  #   title —— 屏幕中央大字（默认，停留 center-duration-seconds 秒）
+  #   chat  —— 聊天栏消息（文案见 message-format）
+  #   off   —— 关闭，完全不提示（与 enabled: false 效果相同）
+  # 兼容旧写法：center = title，none/false = off
+  mode: title
 
   # mode=chat 时使用的聊天栏文案
   message-format: "&a[InfoHUD] &e已到达 &b%biome%"
 
-  # mode=center 时使用的中央大字标题，支持占位符：
+  # mode=title 时使用的中央大字标题，支持占位符：
   #   %biome%     群系显示名
   #   %biome_id%  群系原始英文 ID
   #   %player%    玩家名
   # 可用同样的颜色代码 / MiniMessage 标签
-  center-title: "&e进入 &b%biome%"
+  center-title: "&b%biome%"
 
-  # mode=center 时大字在屏幕上停留的秒数（1~10，超出范围会被夹回）
+  # mode=title 时大字在屏幕上停留的秒数（1~10，超出范围会被夹回）
   center-duration-seconds: 3
+
+  # 群系记忆：同一个群系在这个秒数内已经展示过，就不再重复展示
+  #   —— 在平原/森林之间来回走不会反复弹同一个名字
+  # 按“玩家 + 群系”分别计时；0 = 关闭记忆（每次进入群系都提示）
+  # 范围 0~86400（24 小时），只存在内存里，不落盘：玩家下线或重启服务器后清空
+  memory-seconds: 300
 
   # 距上次提示至少移动多少格才发提示，防止在群系交界线上反复横跳刷屏
   # 填 0 表示每次群系变化都提示
@@ -137,8 +146,9 @@ compass:
 # ------------------------------------------------------------
 # 受击生物血条（每个被玩家攻击的生物一条独立 BossBar）
 # 玩家攻击生物（近战，或玩家射出的箭/弩箭/雪球/药水等投射物）时生成血条显示给全部
-# 在线玩家，停留 time 个 tick（默认 100 = 5 秒）后自动消失；期间再被攻击会刷新内容与
-# 倒计时，死亡时切换为 title.dead 模板
+# 在线玩家，停留 time 个 tick（默认 60 = 3 秒）后自动消失；期间再被攻击会刷新内容与
+# 倒计时，死亡时切换为 title.dead 模板、进度归零，并且只再停留 dead-time 个 tick
+# （默认 20 = 1 秒）
 # 注意：自然掉血（摔落/火焰/溺水/窒息/虚空）与怪物互殴等非玩家来源不显示血条
 # 每名玩家可用 /infohud toggle healthbar 自己开关（权限 infohud.healthbar）
 # 标题占位符（MiniMessage 标签与 & 颜色代码可混用；& 代码是否生效见 hud.ampersand-colors）：
@@ -168,8 +178,12 @@ bar:
   # BossBar 颜色（RED / GREEN / YELLOW / BLUE / PURPLE / PINK / WHITE）
   color: RED
 
-  # 血条停留时间（tick，20 = 1 秒，100 = 5 秒；范围 20~2000）
-  time: 100
+  # 存活状态下血条停留时间（tick，20 = 1 秒，60 = 3 秒；范围 20~2000）
+  time: 60
+
+  # 死亡状态下血条停留时间（tick）。死亡后切到 title.dead 模板，只再显示这么久
+  # 默认 20 = 1 秒（不用和存活一样久）；范围 20~2000
+  dead-time: 20
 
 # 血条黑名单：名单内的实体类型不显示血条
 # （实体类型名，大小写不敏感，可带 minecraft: 前缀）

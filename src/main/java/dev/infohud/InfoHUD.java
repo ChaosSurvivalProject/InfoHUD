@@ -116,7 +116,10 @@ public final class InfoHUD extends JavaPlugin {
                 + "，顶部罗盘刷新 " + config.compassUpdateIntervalTicks() + " tick"
                 + "，时区 " + config.timezone().getId()
                 + "，群系映射 " + config.biomeNameCount() + " 条"
-                + "，受击血条" + (config.healthBarEnabled() ? " 开（停留 " + config.healthBarTimeTicks() + " tick）" : " 关")
+                + "，受击血条" + (config.healthBarEnabled()
+                        ? " 开（存活 " + config.healthBarTimeTicks() + " tick / 死亡 "
+                                + config.healthBarDeadTimeTicks() + " tick）"
+                        : " 关")
                 + (placeholderApiReady ? "，已对接 PlaceholderAPI" : ""));
     }
 
@@ -216,9 +219,13 @@ public final class InfoHUD extends JavaPlugin {
         }
     }
 
-    /** 启动血条清扫任务（固定 20 tick 一轮；血条表为空时空转，开销可忽略）。 */
+    /**
+     * 启动血条清扫任务（{@value HealthBarSweepTask#SWEEP_INTERVAL_TICKS} tick 一轮，
+     * 决定血条消失时刻的精度；血条表为空时空转，开销可忽略）。
+     */
     private void startHealthBarTask() {
-        this.healthBarTask = new HealthBarSweepTask(this).runTaskTimer(this, 20, 20);
+        int interval = HealthBarSweepTask.SWEEP_INTERVAL_TICKS;
+        this.healthBarTask = new HealthBarSweepTask(this).runTaskTimer(this, interval, interval);
     }
 
     private void stopHealthBarTask() {

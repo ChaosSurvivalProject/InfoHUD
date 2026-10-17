@@ -182,20 +182,30 @@ public final class InfoHUDCommand implements CommandExecutor, TabCompleter {
         };
     }
 
+    /** 群系提示的展示方式文案（status 展示用）。 */
+    private static String notifyModeText(PluginConfig config) {
+        return switch (config.notifyMode()) {
+            case TITLE -> "&a中央大字 &8(" + config.centerDurationSeconds() + "s&8)";
+            case CHAT -> "&a聊天栏";
+            case OFF -> "&c关闭";
+        };
+    }
+
     /** /infohud status */
     private boolean status(CommandSender sender) {
         PluginConfig config = plugin.config();
         send(sender, "&e─── InfoHUD &fv" + plugin.pluginVersion() + " ───");
         send(sender, "&7运行模式&r Paper/Purpur &7信息栏刷新&r &f" + config.updateIntervalTicks() + " tick"
                 + "&7 罗盘刷新&r &f" + config.compassUpdateIntervalTicks() + " tick"
-                + "&7 群系提示&r " + (config.notifyEnabled() ? "&a开" : "&c关")
-                + "&7 提示方式&r &f" + (config.notifyMode() == PluginConfig.NotificationMode.CENTER
-                        ? "中央大字 &8(" + config.centerDurationSeconds() + "s&8)" : "聊天栏")
+                + "&7 群系提示&r " + notifyModeText(config)
+                + "&7 群系记忆&r " + (config.memorySeconds() > 0
+                        ? "&f" + config.memorySeconds() + "s" : "&8关")
                 + "&7 文本模式&r &f" + config.textMode().name().toLowerCase(Locale.ROOT));
         send(sender, "&7时区&r &f" + config.timezone().getId() + " &7偏好条数&r &f" + plugin.preferences().size()
                 + " &7在线玩家&r &f" + Bukkit.getOnlinePlayers().size());
         send(sender, "&7受击血条&r " + (config.healthBarEnabled() ? "&a开启" : "&c关闭")
                 + "&7 停留&r &f" + config.healthBarTimeTicks() + " tick"
+                + "&8（死亡 &f" + config.healthBarDeadTimeTicks() + " tick&8）"
                 + "&7 黑名单&r &f" + config.healthBarBlacklist().size() + " 项"
                 + "&7 当前显示&r &f" + plugin.healthBars().size() + " 条");
         if (!(sender instanceof Player player)) {
@@ -219,7 +229,8 @@ public final class InfoHUDCommand implements CommandExecutor, TabCompleter {
         Biome biome = plugin.biomes().currentBiome(player, config);
         String preview = plugin.renderer().preview(player, biome, config);
         send(sender, "&7当前群系&r &f" + dev.infohud.util.BiomeUtil.displayName(biome, config)
-                + " &8[&f" + dev.infohud.util.BiomeUtil.idOf(biome) + "&8]");
+                + " &8[&f" + dev.infohud.util.BiomeUtil.idOf(biome) + "&8]"
+                + " &7已记忆群系&r &f" + plugin.biomes().memorySize(id) + " 个");
         send(sender, "&7ActionBar 预览&r &f" + preview);
         send(sender, "&7罗盘预览&r ",
                 CompassUtil.buildTitle(CompassUtil.bearingOf(player.getLocation().getYaw())));

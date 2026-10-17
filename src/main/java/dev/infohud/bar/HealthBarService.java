@@ -38,12 +38,13 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 /**
  * 受击生物血条：**只有玩家攻击生物**（近战或玩家射出的投射物）时才为它生成一条
  * <b>独立</b>的 BossBar 显示给全部在线玩家，停留 {@code bar.time} 个 tick
- * （默认 100 = 5 秒）后自动消失。
+ * （默认 60 = 3 秒）后自动消失。
  *
  * <ul>
  *   <li>再次受击：刷新标题/进度并重置倒计时；</li>
  *   <li>死亡（{@link EntityDeathEvent} 或最后一次伤害把血打空）：切换到 {@code bar.title.dead}
- *       模板，进度归零，同样刷新倒计时；</li>
+ *       模板，进度归零，停留<b>更短的</b> {@code bar.dead-time} 个 tick（默认 20 = 1 秒）
+ *       —— 死亡是终局信息，看一眼就够，不必和存活血条一样久；</li>
  *   <li>黑名单（{@code blacklist}，默认 ENDER_DRAGON / WITHER / PLAYER / ARMOR_STAND）内的
  *       实体类型不显示血条；</li>
  *   <li>总开关 {@code bar.enabled} 关闭时不生成新血条，{@code reload} 会摘掉已显示的血条；</li>
@@ -142,7 +143,7 @@ public final class HealthBarService implements Listener {
             state.bar.progress(progress);
         }
         state.lastDamage = damage;
-        state.expiryTick = Bukkit.getCurrentTick() + config.healthBarTimeTicks();
+        state.expiryTick = Bukkit.getCurrentTick() + lifetimeTicks(config, dead);
     }
 
     /**
@@ -162,7 +163,7 @@ public final class HealthBarService implements Listener {
         return damager instanceof Projectile projectile && projectile.getShooter() instanceof Player;
     }
 
-    /** 死亡时若血条还在：切到 dead 模板、进度归零、刷新倒计时。 */
+    /** 死亡时若血条还在：切到 dead 模板、进度归零、按更短的死亡时长重新计时。 */
     @EventHandler
     public void onDeath(EntityDeathEvent event) {
         if (!(event.getEntity() instanceof LivingEntity living)) {
@@ -173,9 +174,20 @@ public final class HealthBarService implements Listener {
             return;
         }
         PluginConfig config = plugin.config();
-        state.expiryTick = Bukkit.getCurrentTick() + config.healthBarTimeTicks();
+        state.expiryTick = Bukkit.getCurrentTick() + lifetimeTicks(config, true);
         state.bar.name(buildTitle(living, 0.0, state.lastDamage, true, config));
         state.bar.progress(0.0f);
+    }
+
+    /**
+     * 这条血条该停留多久（tick）：死亡走 {@code bar.dead-time}，存活走 {@code bar.time}。
+     *
+     * <p>「最后一击把血打空」的伤害事件也会走到这里（{@link #onDamage} 里 {@code dead = true}），
+     * 所以濒死/击杀那一帧就已经按短时长计时，随后到达的 {@link EntityDeathEvent} 会再刷新一次，
+     * 两者结果一致。</p>
+     */
+    private static int lifetimeTicks(PluginConfig config, boolean dead) {
+        return dead ? config.healthBarDeadTimeTicks() : config.healthBarTimeTicks();
     }
 
     /** 新玩家上线：把当时还活着、且该玩家有权限与开关的血条加给他。 */

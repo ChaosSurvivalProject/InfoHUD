@@ -8,7 +8,7 @@
 2. 现实世界时间（服务器时区，`HH:MM:SS`）
 3. 当前时段（日出 / 白天 / 日落 / 黑夜，边界可配）
 4. 玩家当前所处生物群系（中文映射可配）
-5. 进入新群系时在屏幕中央大字提示（默认，停留 3s；可改回聊天栏）
+5. 进入新群系时显示群系名（默认屏幕中央大字，停留 3s；可配成聊天栏或关闭；同一群系 5 分钟内不重复弹）
 
 **顶部 BossBar（罗盘）** 持续显示方向指示
 
@@ -109,11 +109,12 @@ day-night:
 
 ```yaml
 biome-notification:
-  enabled: true
-  mode: center                        # center = 屏幕中央大字（默认）；chat = 聊天栏消息
+  enabled: true                       # 总开关（mode: off 与它等价）
+  mode: title                         # title = 屏幕中央大字；chat = 聊天栏；off = 关闭
   message-format: "&a[InfoHUD] &e已到达 &b%biome%"   # mode=chat 时使用
-  center-title: "&e进入 &b%biome%"    # mode=center 时中央大字标题
+  center-title: "&b%biome%"            # mode=title 时中央大字标题（直接显示群系名）
   center-duration-seconds: 3          # 中央大字停留秒数（1~10）
+  memory-seconds: 300         # 群系记忆：同一群系 5 分钟内不再重复展示（0 = 关闭）
   min-move-distance: 5        # 距上次提示至少走 5 格才发，防交界线刷屏
   query-cooldown-ticks: 5     # 每名玩家两次群系查询的最小间隔（0 = 每次跨方块都查）
   loaded-chunk-only: true     # 只在区块已加载时查询，绝不触发区块生成
@@ -124,11 +125,21 @@ storage:
   save-debounce-seconds: 5      # 多次 toggle 合并成一次写盘
 ```
 
-- **默认在屏幕中央大字提示**（`mode: center`）：进入新群系时以 title 形式显示 `center-title`
-  文案（无 subtitle），停留 `center-duration-seconds` 秒（默认 3，范围 1~10 自动夹取）。
+- **展示方式由 `mode` 一处决定，三选一**：
+  - `title`（默认）—— 屏幕中央大字，以 title 形式显示 `center-title` 文案（无 subtitle），
+    停留 `center-duration-seconds` 秒（默认 3，范围 1~10 自动夹取）；
+  - `chat` —— 聊天栏消息，只使用 `message-format`；
+  - `off` —— 完全关闭，不展示任何群系切换提示（与 `enabled: false` 效果相同）。
+  兼容旧写法：`center` = `title`，`none` / `false` = `off`，升级不会让旧配置失效。
+  `enabled: false` 时无论 `mode` 写什么都不提示（总开关优先）。
+- `title` 的默认文案就是**群系名本身**（`&b%biome%`），不再带“进入”字样；想加前缀自己写在模板里即可。
   文案支持占位符 `%biome%`、`%biome_id%`、`%player%`，颜色写法与 `display-format` 完全一致
   （传统 `&`/`§` 代码或 MiniMessage 标签，由 `hud.text-mode` 决定解析方式）。
-- 想要旧的聊天栏效果：`mode: chat`，此时只使用 `message-format`。
+
+- **群系记忆（默认 5 分钟）**：按“玩家 + 群系”计时，同一个群系在 `memory-seconds` 内
+  已经展示过一次就不再展示 —— 在平原与森林之间来回穿行只会弹一次，离开再回来也不会立刻重弹。
+  `0` 为关闭记忆（每次进入都提示），上限 24 小时。记忆**只存在内存里**：玩家下线即清空，
+  重启服务器/`/infohud reload` 也会清空，不写任何文件。
 
 - **首次进服不会弹提示**：玩家上线（或 `/infohud reload`）时只建立群系基线，不发消息。
 - **换世界与传送会正确刷新**：过下界门/末地门、`/tp`、`/spawn` 之后约 1 秒内重取群系；
@@ -187,7 +198,8 @@ bar:
     dead: "<gray><health>/<max> <dark_gray>☠ <name> ☠ <reset>-<damage><red>♥"
   overlay: PROGRESS             # PROGRESS/SOLID、NOTCHED_6/10/12/20
   color: RED
-  time: 100                     # 停留 tick（20 tick = 1 秒，范围 20~2000）
+  time: 60                      # 存活时停留 tick（20 tick = 1 秒，默认 3 秒；范围 20~2000）
+  dead-time: 20                 # 死亡后停留 tick（默认 1 秒；范围 20~2000）
 
 blacklist:                      # 名单内的实体类型不显示血条
   - ENDER_DRAGON
@@ -198,8 +210,9 @@ blacklist:                      # 名单内的实体类型不显示血条
 
 - 只有**玩家造成的伤害**才触发（近战，或玩家射出的箭/弩箭/雪球/药水等投射物）；
   自然掉血（摔落、火焰、溺水、窒息、虚空）与怪物互殴、铁砧、TNT 都不显示。
-- 每个受击生物一条**独立** BossBar，显示给所有开启了血条的玩家；再被攻击刷新内容与倒计时，
-  死亡时切到 `title.dead` 模板并把进度归零。
+- 每个受击生物一条**独立** BossBar，显示给所有开启了血条的玩家；再被攻击刷新内容与倒计时。
+  存活时停留 `time`（默认 60 tick = **3 秒**）；死亡时切到 `title.dead` 模板、进度归零，
+  并且只再停留 `dead-time`（默认 20 tick = **1 秒**）—— 死亡信息看一眼就够，不必和存活一样久。
 - 标题占位符：`<entity>`（原版翻译名，客户端按自己语言渲染）、`<name>`（自定义名，没有则回退 `<entity>`）、
   `<health>` / `<max>`（当前 / 最大生命值，死亡显示 0）、`<damage>`（本次最终伤害）。
 - **三层开关**，缺一不可：`bar.enabled`（服务端总闸）→ `infohud.healthbar`（权限）→
@@ -273,7 +286,7 @@ display-format: "<gradient:#00ffcc:#0088ff>时间</gradient> &f%gametime% &8| &a
 | 罗盘（BossBar） | 标题按 5° 刻度（整圈 72 种缓存复用）、进度按 1° 判定，各自未变时零网络包；仅离线/关开关时关闭 BossBar |
 | 组件解析 | 同轮内文本相同直接复用同一个不可变 `Component`；`Component` 不可变，复用安全 |
 | 磁盘 IO | 偏好写盘防抖合并；`data.yml` 走异步线程写，主线程零阻塞 |
-| 内存 | 玩家离线即清理群系缓存与 BossBar；只有个人偏好按 UUID 长期保留（每人两条布尔值） |
+| 内存 | 玩家离线即清理群系缓存、群系记忆与 BossBar；只有个人偏好按 UUID 长期保留（每人两条布尔值） |
 
 主线程上跑的仍然是 `World#getTime()`、`sendActionBar()` 这类必须在主线程的调用；
 把群系查询彻底挪到异步需要跨线程读区块，在 Paper 上反而不安全，因此采用“缓存 + 节流”。
@@ -307,10 +320,11 @@ src/main/java/dev/infohud/
   time/DayNightPhase.java                     时段枚举
   util/BiomeUtil.java                         群系读取、ID 与显示名
   biome/BiomeService.java                     群系缓存、切换判定、提示发送
+  biome/BiomeMemory.java                      群系记忆（内存：玩家+群系 冷却，防重复展示）
   compass/CompassService.java               每玩家独占 BossBar + 方位角缓存
   compass/CompassTask.java                    主线程定时刷新顶部罗盘
   bar/HealthBarService.java                   受击血条（伤害/死亡事件 + 玩家开关过滤）
-  bar/HealthBarSweepTask.java                 主线程定时清扫到期血条
+  bar/HealthBarSweepTask.java                 主线程定时清扫到期血条（5 tick 一轮）
   util/CompassUtil.java                       罗盘刻度窗口与进度计算
   hud/HudTask.java                            BukkitRunnable 刷新任务
   hud/HudRenderer.java                        占位符填充 + 组件复用
@@ -352,6 +366,10 @@ A：玩家所在区块尚未加载（刚传送落地的一瞬间），下一轮�
 **Q：改了 `min-move-distance` 还是刷屏？**
 A：那是“真跨了两个群系”。把 `biome-notification.enabled` 设为 `false` 只保留 HUD，
 或调大 `query-cooldown-ticks` / `min-move-distance`。
+
+**Q：同一条群系提示不再出现？**
+A：那是群系记忆在起作用：`memory-seconds`（默认 300 秒）内同一个群系只提示一次。
+想每次进入都提示就把它设为 `0`；想看提示频繁程度可以调小到 `30` 之类。
 
 **Q：Purpur 专属功能能用吗？**
 A：可以。插件只用 Paper API，Purpur 完整兼容；同一 jar 在 Paper 与 Purpur 上都能跑。

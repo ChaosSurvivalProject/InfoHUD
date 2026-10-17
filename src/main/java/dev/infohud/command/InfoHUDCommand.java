@@ -22,10 +22,10 @@ import dev.infohud.util.CompassUtil;
 import net.kyori.adventure.text.Component;
 
 /**
- * {@code /infohud} 命令：帮助、重载、个人开关（底部信息栏 / 顶部罗盘各自独立）、状态查看。
+ * {@code /infohud} 命令：帮助、重载、个人开关（底部信息栏 / 顶部罗盘 / 受击血条各自独立）、状态查看。
  *
  * <p>权限：{@code infohud.use}（底部信息栏）、{@code infohud.compass}（顶部罗盘）、
- * {@code infohud.admin}（reload、代管他人）。</p>
+ * {@code infohud.healthbar}（受击血条）、{@code infohud.admin}（reload、代管他人）。</p>
  */
 public final class InfoHUDCommand implements CommandExecutor, TabCompleter {
 
@@ -36,8 +36,12 @@ public final class InfoHUDCommand implements CommandExecutor, TabCompleter {
             &7/infohud reload &f- 重载配置文件 &8(infohud.admin)
             &7/infohud toggle &f- 开关自己的底部信息栏 &8(infohud.use)
             &7/infohud toggle compass &f- 开关自己的顶部罗盘 &8(infohud.compass)
-            &7/infohud toggle <compass|actionbar> [玩家] &f- 代管他人，需要 &cinfohud.admin&r
+            &7/infohud toggle healthbar &f- 开关自己的受击血条 &8(infohud.healthbar)
+            &7/infohud toggle <actionbar|compass|healthbar> [玩家] &f- 代管他人，需要 &cinfohud.admin&r
             &7/infohud status &f- 查看当前 HUD 内容与运行参数 &8(infohud.use)""";
+
+    /** {@code /infohud toggle} 之后可选的开关名（补全与解析共用同一份）。 */
+    private static final String[] TOGGLE_TARGETS = {"actionbar", "compass", "healthbar"};
 
     private final InfoHUD plugin;
 
@@ -86,10 +90,11 @@ public final class InfoHUDCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * /infohud toggle [compass|actionbar] [玩家]
+     * /infohud toggle [actionbar|compass|healthbar] [玩家]
      *
      * <p>缺省开关对象是底部信息栏（保持旧版 {@code /infohud toggle} 语义）；
-     * {@code compass} 切顶部罗盘；{@code actionbar}/{@code hud} 显式切底部信息栏。
+     * {@code compass} 切顶部罗盘；{@code healthbar} 切受击血条；
+     * {@code actionbar}/{@code hud} 显式切底部信息栏。
      * 带玩家名需 {@code infohud.admin}（旧用法 {@code toggle <玩家名>} 仍按底部信息栏处理）。</p>
      */
     private boolean toggle(CommandSender sender, String[] args) {
@@ -98,6 +103,9 @@ public final class InfoHUDCommand implements CommandExecutor, TabCompleter {
         String first = args.length >= 2 ? args[1].toLowerCase(Locale.ROOT) : "";
         if (first.equals("compass")) {
             flag = PreferenceStore.Flag.COMPASS;
+            playerArg = 2;
+        } else if (first.equals("healthbar") || first.equals("health-bar")) {
+            flag = PreferenceStore.Flag.HEALTH_BAR;
             playerArg = 2;
         } else if (first.equals("actionbar") || first.equals("hud")) {
             flag = PreferenceStore.Flag.ACTION_BAR;
@@ -125,21 +133,36 @@ public final class InfoHUDCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        String perm = flag == PreferenceStore.Flag.COMPASS ? Permissions.COMPASS : Permissions.USE;
+        String perm = switch (flag) {
+            case ACTION_BAR -> Permissions.USE;
+            case COMPASS -> Permissions.COMPASS;
+            case HEALTH_BAR -> Permissions.HEALTH_BAR;
+        };
         if (!target.hasPermission(perm)) {
             send(sender, PREFIX + "&c该玩家没有 &f" + perm + "&c 权限，该部件对其始终关闭。");
             return true;
         }
 
         PluginConfig config = plugin.config();
-        boolean fallback = flag == PreferenceStore.Flag.COMPASS
-                ? config.compassEnabledByDefault() : config.enabledByDefault();
+        boolean fallback = switch (flag) {
+            case ACTION_BAR -> config.enabledByDefault();
+            case COMPASS -> config.compassEnabledByDefault();
+            case HEALTH_BAR -> config.healthBarEnabledByDefault();
+        };
         boolean enabled = plugin.preferences().toggle(target.getUniqueId(), flag, fallback);
         if (!enabled && flag == PreferenceStore.Flag.COMPASS) {
             // 立即摘掉 BossBar，不等下一轮任务
             plugin.compass().closeFor(target.getUniqueId());
         }
-        String what = flag == PreferenceStore.Flag.COMPASS ? "顶部罗盘" : "底部信息栏";
+        if (flag == PreferenceStore.Flag.HEALTH_BAR) {
+            // 血条是"每生物一条"，开关变化后要把现有血条立刻加上/摘掉
+            plugin.healthBars().refreshFor(target);
+        }
+        String what = switch (flag) {
+            case ACTION_BAR -> "底部信息栏";
+            case COMPASS -> "顶部罗盘";
+            case HEALTH_BAR -> "受击血条";
+        };
         String state = enabled ? "&a已开启" : "&c已关闭";
         if (target == sender) {
             send(sender, PREFIX + what + " " + state);
@@ -150,8 +173,13 @@ public final class InfoHUDCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    /** 开关对象在命令里写的名字（控制台提示与补全共用）。 */
     private static String flagKey(PreferenceStore.Flag flag) {
-        return flag == PreferenceStore.Flag.COMPASS ? "compass" : "actionbar";
+        return switch (flag) {
+            case ACTION_BAR -> "actionbar";
+            case COMPASS -> "compass";
+            case HEALTH_BAR -> "healthbar";
+        };
     }
 
     /** /infohud status */
@@ -179,10 +207,15 @@ public final class InfoHUDCommand implements CommandExecutor, TabCompleter {
                 && plugin.preferences().actionBar(id, config.enabledByDefault());
         boolean compassOn = player.hasPermission(Permissions.COMPASS)
                 && plugin.preferences().compass(id, config.compassEnabledByDefault());
+        boolean healthBarOn = player.hasPermission(Permissions.HEALTH_BAR)
+                && config.healthBarEnabled()
+                && plugin.preferences().healthBar(id, config.healthBarEnabledByDefault());
         send(sender, "&7底部信息栏&r " + (barOn ? "&a开启" : "&c关闭")
                 + (plugin.preferences().isSet(id, PreferenceStore.Flag.ACTION_BAR) ? "&7（个人设置）" : "&7（跟随默认值）"));
         send(sender, "&7顶部罗盘&r " + (compassOn ? "&a开启" : "&c关闭")
                 + (plugin.preferences().isSet(id, PreferenceStore.Flag.COMPASS) ? "&7（个人设置）" : "&7（跟随默认值）"));
+        send(sender, "&7受击血条&r " + (healthBarOn ? "&a开启" : "&c关闭")
+                + (plugin.preferences().isSet(id, PreferenceStore.Flag.HEALTH_BAR) ? "&7（个人设置）" : "&7（跟随默认值）"));
         Biome biome = plugin.biomes().currentBiome(player, config);
         String preview = plugin.renderer().preview(player, biome, config);
         send(sender, "&7当前群系&r &f" + dev.infohud.util.BiomeUtil.displayName(biome, config)
@@ -226,15 +259,13 @@ public final class InfoHUDCommand implements CommandExecutor, TabCompleter {
             return out;
         }
         if (args.length == 2) {
+            // 这一层只补开关名：玩家名放到下一层（toggle <开关> <玩家>）再补，
+            // 混在一起会让人以为 "toggle <玩家名>" 能直接切该玩家的血条/罗盘
             String head = args[1].toLowerCase(Locale.ROOT);
-            for (String option : new String[]{"actionbar", "compass"}) {
+            for (String option : TOGGLE_TARGETS) {
                 if (option.startsWith(head)) {
                     out.add(option);
                 }
-            }
-            // 旧用法：toggle <玩家名>（admin）
-            if (sender.hasPermission(Permissions.ADMIN)) {
-                addPlayersMatching(out, head);
             }
             return out;
         }
@@ -244,9 +275,16 @@ public final class InfoHUDCommand implements CommandExecutor, TabCompleter {
         return out;
     }
 
+    /** 参数是否是已知的开关名（含别名），决定第三层是否补玩家名。 */
     private static boolean isFlagName(String raw) {
         String lower = raw.toLowerCase(Locale.ROOT);
-        return lower.equals("compass") || lower.equals("actionbar") || lower.equals("hud");
+        for (String target : TOGGLE_TARGETS) {
+            if (target.equals(lower)) {
+                return true;
+            }
+        }
+        // 兼容别名：hud = actionbar，health-bar = healthbar
+        return lower.equals("hud") || lower.equals("health-bar");
     }
 
     private static void addPlayersMatching(List<String> out, String head) {

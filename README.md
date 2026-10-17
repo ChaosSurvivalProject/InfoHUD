@@ -38,10 +38,12 @@
 | `/infohud reload` | 重载 `config.yml`，并按新间隔重启刷新任务 | `infohud.admin` |
 | `/infohud toggle` | 开 / 关自己的**底部信息栏**（个人偏好会落盘） | `infohud.use` |
 | `/infohud toggle compass` | 开 / 关自己的**顶部罗盘**（与底部信息栏独立） | `infohud.compass` |
-| `/infohud toggle <compass\|actionbar> <玩家>` | 代管其他玩家的开关 | `infohud.admin` |
+| `/infohud toggle healthbar` | 开 / 关自己的**受击血条**（与信息栏、罗盘独立） | `infohud.healthbar` |
+| `/infohud toggle <actionbar\|compass\|healthbar> <玩家>` | 代管其他玩家的开关 | `infohud.admin` |
 | `/infohud status` | 查看运行参数、当前群系、ActionBar 预览与罗盘预览 | 无（游戏内执行才有个人数据） |
 
-别名：`/ihud`、`/hud`。命令带 Tab 补全（`toggle` 会列出开关对象与在线玩家）。
+别名：`/ihud`、`/hud`。命令带 Tab 补全（`toggle` 先补开关名，选定开关后再补在线玩家）。
+血条开关对已经在显示的血条**立即生效**，不需要等下一次受击。
 
 ## 三、权限节点
 
@@ -49,12 +51,14 @@
 | --- | --- | --- |
 | `infohud.use` | 所有人 | 接收底部 ActionBar 信息栏；可开关自己的信息栏 |
 | `infohud.compass` | 所有人 | 接收顶部 BossBar 罗盘；可开关自己的罗盘 |
+| `infohud.healthbar` | 所有人 | 接收受击生物血条；可开关自己的血条 |
 | `infohud.notify` | 所有人 | 进入新群系时接收提示（屏幕中央大字或聊天栏，取决于 `biome-notification.mode`） |
 | `infohud.admin` | OP | `/infohud reload`、代管他人开关 |
 | `infohud.*` | OP | 以上全部 |
 
-没有 `infohud.use` 的玩家不会被推送任何 ActionBar 消息；没有 `infohud.compass` 的玩家不会生成 BossBar（任务直接跳过，不产生开销）。
-两者互不影响——可以在 `permissions` 里单独关掉某个部件。
+没有 `infohud.use` 的玩家不会被推送任何 ActionBar 消息；没有 `infohud.compass` 的玩家不会生成 BossBar（任务直接跳过，不产生开销）；
+没有 `infohud.healthbar` 的玩家连血条 BossBar 包都不会收到。
+三者互不影响——可以在 `permissions` 里单独关掉某个部件。
 
 ---
 
@@ -172,7 +176,38 @@ compass:
   - 权限：`infohud.compass` 与 `infohud.use` 互不影响；
   - 玩家开关：`/infohud toggle compass` 与 `/infohud toggle` 各切各的。
 
-### 4.5 颜色格式
+### 4.5 受击血条（`bar`）
+
+```yaml
+bar:
+  enabled: true                 # 服务端总闸：关掉后所有玩家都收不到血条
+  enabled-by-default: true      # 玩家默认是否接收（个人开关会覆盖它）
+  title:
+    living: "<gray><health>/<max> <reset><name> -<damage><red>♥"
+    dead: "<gray><health>/<max> <dark_gray>☠ <name> ☠ <reset>-<damage><red>♥"
+  overlay: PROGRESS             # PROGRESS/SOLID、NOTCHED_6/10/12/20
+  color: RED
+  time: 100                     # 停留 tick（20 tick = 1 秒，范围 20~2000）
+
+blacklist:                      # 名单内的实体类型不显示血条
+  - ENDER_DRAGON
+  - WITHER
+  - PLAYER
+  - ARMOR_STAND
+```
+
+- 只有**玩家造成的伤害**才触发（近战，或玩家射出的箭/弩箭/雪球/药水等投射物）；
+  自然掉血（摔落、火焰、溺水、窒息、虚空）与怪物互殴、铁砧、TNT 都不显示。
+- 每个受击生物一条**独立** BossBar，显示给所有开启了血条的玩家；再被攻击刷新内容与倒计时，
+  死亡时切到 `title.dead` 模板并把进度归零。
+- 标题占位符：`<entity>`（原版翻译名，客户端按自己语言渲染）、`<name>`（自定义名，没有则回退 `<entity>`）、
+  `<health>` / `<max>`（当前 / 最大生命值，死亡显示 0）、`<damage>`（本次最终伤害）。
+- **三层开关**，缺一不可：`bar.enabled`（服务端总闸）→ `infohud.healthbar`（权限）→
+  `bar.enabled-by-default` 与 `/infohud toggle healthbar`（个人开关）。关掉的玩家**连包都不收**，
+  不会白占带宽。
+- `/infohud toggle healthbar` 对已经在显示的血条立即生效：关掉立刻摘掉，打开立刻补上。
+
+### 4.6 颜色格式
 
 同一行里可以混写传统代码和 MiniMessage 标签：
 
@@ -186,7 +221,7 @@ display-format: "<gradient:#00ffcc:#0088ff>时间</gradient> &f%gametime% &8| &a
 - `text-mode: minimessage` —— 强制 MiniMessage。
 - 十六进制：传统写法 `&#RRGGBB`，或 MiniMessage 的 `<color:#RRGGBB>`。
 
-### 4.6 占位符
+### 4.7 占位符
 
 | 占位符 | 含义 | 示例 |
 | --- | --- | --- |
@@ -274,6 +309,9 @@ src/main/java/dev/infohud/
   biome/BiomeService.java                     群系缓存、切换判定、提示发送
   compass/CompassService.java               每玩家独占 BossBar + 方位角缓存
   compass/CompassTask.java                    主线程定时刷新顶部罗盘
+  bar/HealthBarService.java                   受击血条（伤害/死亡事件 + 玩家开关过滤）
+  bar/HealthBarSweepTask.java                 主线程定时清扫到期血条
+  util/CompassUtil.java                       罗盘刻度窗口与进度计算
   hud/HudTask.java                            BukkitRunnable 刷新任务
   hud/HudRenderer.java                        占位符填充 + 组件复用
   hud/HudContext.java / WorldSnapshot.java    每轮公共上下文 / 世界快照
@@ -294,6 +332,11 @@ src/test/java/…                               时间换算、时段判定、�
 A：依次检查 —— 控制台是否有 `InfoHUD v1.0.0 已启用`；玩家是否有 `infohud.use`；
 是否被 `/infohud toggle` 关掉过（`/infohud status` 会显示“个人设置”还是“跟随默认值”）。
 顶部罗盘同理：看 `infohud.compass` 与 `/infohud toggle compass`。
+
+**Q：打怪没有血条？**
+A：三层开关任一没开都看不到：`bar.enabled`（服务端总闸）、`infohud.healthbar`（权限）、
+`/infohud toggle healthbar`（个人开关，`/infohud status` 会显示是“个人设置”还是“跟随默认值”）。
+另外确认伤害是**玩家造成的**（怪物互殴、摔落、火焰都不算），且该实体不在 `blacklist` 里。
 
 **Q：顶部罗盘指针和文字哪个准？**
 A：两者是同一朝向的两种读法：进度条位置是指针（北 0% / 东 25% / 南 50% / 西 75%），

@@ -19,9 +19,10 @@ import org.bukkit.scheduler.BukkitTask;
 import dev.infohud.InfoHUD;
 
 /**
- * 玩家 HUD 开关偏好的存储层：底部信息栏（ActionBar）与顶部罗盘（BossBar）<b>各自独立</b>。
+ * 玩家 HUD 开关偏好的存储层：底部信息栏（ActionBar）、顶部罗盘（BossBar）与受击血条
+ * <b>各自独立</b>。
  *
- * <p>每名玩家两条开关，取值三态：</p>
+ * <p>每名玩家三条开关，取值三态：</p>
  * <ul>
  *   <li>{@code null}（未设置）——跟随 {@code config.yml} 的默认值；</li>
  *   <li>{@code true} / {@code false}——玩家通过 {@code /infohud toggle} 显式设置过。</li>
@@ -37,16 +38,17 @@ import dev.infohud.InfoHUD;
  * </ul>
  *
  * <p>兼容旧版单开关数据：老文件形如 {@code <uuid>: true}，加载时只作用于底部信息栏，
- * 罗盘保持未设置（跟随配置默认值）。</p>
+ * 罗盘与血条保持未设置（跟随配置默认值）。</p>
  *
  * <p>写盘做了防抖：多次 toggle 只会在最后一个防抖窗口结束后写一次。</p>
  */
 public final class PreferenceStore implements Listener {
 
-    /** 单玩家的两条独立开关；null 字段 = 未设置，跟随配置默认值。 */
+    /** 单玩家的三条独立开关；null 字段 = 未设置，跟随配置默认值。 */
     public static final class PlayerPrefs {
         Boolean actionBar;
         Boolean compass;
+        Boolean healthBar;
     }
 
     /** 可独立开关的 HUD 部件。 */
@@ -54,7 +56,9 @@ public final class PreferenceStore implements Listener {
         /** 底部信息栏（ActionBar）。 */
         ACTION_BAR,
         /** 顶部罗盘（BossBar）。 */
-        COMPASS;
+        COMPASS,
+        /** 受击生物血条（击杀/受击时显示的独立 BossBar）。 */
+        HEALTH_BAR;
     }
 
     /** 内存态：玩家 → 独立开关（只含有显式设置过至少一项的玩家）。 */
@@ -106,7 +110,7 @@ public final class PreferenceStore implements Listener {
                 // 旧版单开关：只作用于底部信息栏，罗盘跟随配置默认值
                 prefs(id).actionBar = legacy;
             } else if (value instanceof ConfigurationSection section) {
-                // 新版格式：<uuid>: { action-bar: x, compass: y }（缺省字段视为未设置）
+                // 新版格式：<uuid>: { action-bar: x, compass: y, health-bar: z }（缺省字段视为未设置）
                 Object actionBar = section.get("action-bar");
                 if (actionBar instanceof Boolean b) {
                     prefs(id).actionBar = b;
@@ -114,6 +118,10 @@ public final class PreferenceStore implements Listener {
                 Object compass = section.get("compass");
                 if (compass instanceof Boolean b) {
                     prefs(id).compass = b;
+                }
+                Object healthBar = section.get("health-bar");
+                if (healthBar instanceof Boolean b) {
+                    prefs(id).healthBar = b;
                 }
             }
         }
@@ -135,13 +143,23 @@ public final class PreferenceStore implements Listener {
         return p == null || p.compass == null ? fallback : p.compass;
     }
 
+    /** 玩家当前是否应该看到受击生物血条。 */
+    public boolean healthBar(UUID playerId, boolean fallback) {
+        PlayerPrefs p = preferences.get(playerId);
+        return p == null || p.healthBar == null ? fallback : p.healthBar;
+    }
+
     /** 玩家是否显式设置过某条开关（{@code /infohud status} 用来区分“默认开”和“我开的”）。 */
     public boolean isSet(UUID playerId, Flag flag) {
         PlayerPrefs p = preferences.get(playerId);
         if (p == null) {
             return false;
         }
-        return flag == Flag.ACTION_BAR ? p.actionBar != null : p.compass != null;
+        return switch (flag) {
+            case ACTION_BAR -> p.actionBar != null;
+            case COMPASS -> p.compass != null;
+            case HEALTH_BAR -> p.healthBar != null;
+        };
     }
 
     /**
@@ -149,15 +167,17 @@ public final class PreferenceStore implements Listener {
      */
     public void set(UUID playerId, Flag flag, boolean value) {
         PlayerPrefs p = prefs(playerId);
-        boolean changed;
-        if (flag == Flag.ACTION_BAR) {
-            changed = p.actionBar == null || p.actionBar != value;
-            p.actionBar = value;
-        } else {
-            changed = p.compass == null || p.compass != value;
-            p.compass = value;
+        Boolean previous = switch (flag) {
+            case ACTION_BAR -> p.actionBar;
+            case COMPASS -> p.compass;
+            case HEALTH_BAR -> p.healthBar;
+        };
+        switch (flag) {
+            case ACTION_BAR -> p.actionBar = value;
+            case COMPASS -> p.compass = value;
+            case HEALTH_BAR -> p.healthBar = value;
         }
-        if (changed) {
+        if (previous == null || previous != value) {
             dirty = true;
             scheduleWrite();
         }
@@ -165,9 +185,11 @@ public final class PreferenceStore implements Listener {
 
     /** 反转指定开关并返回新值。 */
     public boolean toggle(UUID playerId, Flag flag, boolean fallback) {
-        boolean next = flag == Flag.ACTION_BAR
-                ? !actionBar(playerId, fallback)
-                : !compass(playerId, fallback);
+        boolean next = switch (flag) {
+            case ACTION_BAR -> !actionBar(playerId, fallback);
+            case COMPASS -> !compass(playerId, fallback);
+            case HEALTH_BAR -> !healthBar(playerId, fallback);
+        };
         set(playerId, flag, next);
         return next;
     }
@@ -232,16 +254,19 @@ public final class PreferenceStore implements Listener {
         }
     }
 
-    /** 只取“显式设置过”的开关：action-bar / compass 各键在值为 null 时不写入。 */
+    /** 只取“显式设置过”的开关：action-bar / compass / health-bar 各键在值为 null 时不写入。 */
     private Map<UUID, Map<String, Boolean>> snapshotForWrite() {
         Map<UUID, Map<String, Boolean>> out = new HashMap<>();
         for (Map.Entry<UUID, PlayerPrefs> entry : preferences.entrySet()) {
-            Map<String, Boolean> flags = new HashMap<>(2);
+            Map<String, Boolean> flags = new HashMap<>(3);
             if (entry.getValue().actionBar != null) {
                 flags.put("action-bar", entry.getValue().actionBar);
             }
             if (entry.getValue().compass != null) {
                 flags.put("compass", entry.getValue().compass);
+            }
+            if (entry.getValue().healthBar != null) {
+                flags.put("health-bar", entry.getValue().healthBar);
             }
             if (!flags.isEmpty()) {
                 out.put(entry.getKey(), flags);

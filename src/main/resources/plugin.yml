@@ -21,7 +21,8 @@ commands:
       &7/infohud reload &f- 重载配置文件 &8(infohud.admin)
       &7/infohud toggle &f- 开关底部信息栏 &8(infohud.use)
       &7/infohud toggle compass &f- 开关顶部罗盘 &8(infohud.compass)
-      &7/infohud toggle <compass|actionbar> [玩家] &f- 代管他人 &8(infohud.admin)
+      &7/infohud toggle healthbar &f- 开关受击血条 &8(infohud.healthbar)
+      &7/infohud toggle <actionbar|compass|healthbar> [玩家] &f- 代管他人 &8(infohud.admin)
       &7/infohud status &f- 查看当前 HUD 内容与运行参数
     aliases:
       - ihud
@@ -35,6 +36,10 @@ permissions:
   # 允许接收顶部 BossBar 罗盘（方向指示），与信息栏独立开关
   infohud.compass:
     description: 接收顶部方向罗盘，并可开关自己的罗盘
+    default: true
+  # 允许接收受击生物血条（仅影响该玩家自己是否看到；血条生成仍由 bar.enabled 与黑名单决定）
+  infohud.healthbar:
+    description: 接收受击生物血条，并可开关自己的血条
     default: true
   # 群系切换提示
   infohud.notify:
@@ -50,5 +55,6 @@ permissions:
     children:
       infohud.use: true
       infohud.compass: true
+      infohud.healthbar: true
       infohud.notify: true
       infohud.admin: true

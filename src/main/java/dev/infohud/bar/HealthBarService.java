@@ -25,6 +25,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
 import dev.infohud.InfoHUD;
+import dev.infohud.Permissions;
 import dev.infohud.config.PluginConfig;
 import dev.infohud.text.TextUtil;
 import net.kyori.adventure.bossbar.BossBar;
@@ -45,7 +46,9 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
  *       模板，进度归零，同样刷新倒计时；</li>
  *   <li>黑名单（{@code blacklist}，默认 ENDER_DRAGON / WITHER / PLAYER / ARMOR_STAND）内的
  *       实体类型不显示血条；</li>
- *   <li>总开关 {@code bar.enabled} 关闭时不生成新血条，{@code reload} 会摘掉已显示的血条。</li>
+ *   <li>总开关 {@code bar.enabled} 关闭时不生成新血条，{@code reload} 会摘掉已显示的血条；</li>
+ *   <li>每名玩家还能用 {@code /infohud toggle healthbar} 自己开关血条，权限 {@code infohud.healthbar}；
+ *       关掉的玩家<b>连包都不收</b>（新建血条时就不会加给他）。</li>
  * </ul>
  *
  * <p>标题占位符（模板里原样写尖括号形式）：</p>
@@ -175,11 +178,15 @@ public final class HealthBarService implements Listener {
         state.bar.progress(0.0f);
     }
 
-    /** 新玩家上线：把当时还活着的所有血条加给他。 */
+    /** 新玩家上线：把当时还活着、且该玩家有权限与开关的血条加给他。 */
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        if (!seesHealthBars(player)) {
+            return;
+        }
         for (BarState state : bars.values()) {
-            event.getPlayer().showBossBar(state.bar);
+            player.showBossBar(state.bar);
         }
     }
 
@@ -188,6 +195,37 @@ public final class HealthBarService implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         for (BarState state : bars.values()) {
             event.getPlayer().hideBossBar(state.bar);
+        }
+    }
+
+    // ------------------------- 玩家级开关 -------------------------
+
+    /**
+     * 该玩家当前是否应该看到血条：服务端总闸 + 权限 + 个人开关三者同时满足。
+     *
+     * <p>服务端总闸 {@code bar.enabled} 关闭时任何人都看不到（也不会新建血条）；
+     * 权限 {@code infohud.healthbar} 被收回时该玩家永远看不到；
+     * 个人开关未设置时跟随 {@code bar.enabled-by-default}。</p>
+     */
+    private boolean seesHealthBars(Player player) {
+        PluginConfig config = plugin.config();
+        return config.healthBarEnabled()
+                && player.hasPermission(Permissions.HEALTH_BAR)
+                && plugin.preferences().healthBar(player.getUniqueId(), config.healthBarEnabledByDefault());
+    }
+
+    /**
+     * 玩家切换了自己的血条开关后立即生效：开启则补上当前所有血条，
+     * 关闭则立刻从所有血条上摘掉，不等下一次受击。
+     */
+    public void refreshFor(Player player) {
+        boolean visible = seesHealthBars(player);
+        for (BarState state : bars.values()) {
+            if (visible) {
+                player.showBossBar(state.bar);
+            } else {
+                player.hideBossBar(state.bar);
+            }
         }
     }
 
@@ -231,7 +269,10 @@ public final class HealthBarService implements Listener {
         BossBar bar = BossBar.bossBar(title, progress,
                 toAdventure(config.healthBarColor()), toAdventure(config.healthBarOverlay()));
         for (Player player : Bukkit.getOnlinePlayers()) {
-            player.showBossBar(bar);
+            // 只发给开了血条且有权限的玩家：关掉的玩家连包都不收
+            if (seesHealthBars(player)) {
+                player.showBossBar(bar);
+            }
         }
         BarState state = new BarState(bar);
         bars.put(entity.getUniqueId(), state);

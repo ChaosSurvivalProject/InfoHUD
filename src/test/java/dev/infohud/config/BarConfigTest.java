@@ -84,6 +84,18 @@ class BarConfigTest {
     }
 
     @Test
+    @DisplayName("玩家默认开关：未写时跟随总闸，显式设置时以它为准")
+    void playerDefaultFollowsMasterSwitch() {
+        // 没写 enabled-by-default：跟随 bar.enabled
+        assertTrue(TestConfigs.config("bar:\n  enabled: true\n").healthBarEnabledByDefault());
+        assertFalse(TestConfigs.config("bar:\n  enabled: false\n").healthBarEnabledByDefault());
+        // 显式写：即使总闸开着，也可以默认不给玩家看
+        PluginConfig explicit = TestConfigs.config("bar:\n  enabled: true\n  enabled-by-default: false\n");
+        assertTrue(explicit.healthBarEnabled());
+        assertFalse(explicit.healthBarEnabledByDefault());
+    }
+
+    @Test
     @DisplayName("黑名单归一化：大小写不敏感 + 容忍 minecraft: 前缀")
     void blacklistNormalized() {
         PluginConfig config = TestConfigs.config("""

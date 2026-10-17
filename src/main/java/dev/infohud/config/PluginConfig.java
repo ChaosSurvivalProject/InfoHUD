@@ -129,6 +129,7 @@ public final class PluginConfig {
 
     // ---- bar（受击生物血条）----
     private final boolean healthBarEnabled;
+    private final boolean healthBarEnabledByDefault;
     private final String healthBarLivingTitle;
     private final String healthBarDeadTitle;
     private final BarStyle healthBarOverlay;
@@ -203,6 +204,9 @@ public final class PluginConfig {
 
         // ---------- bar（受击生物血条）----------
         this.healthBarEnabled = config.getBoolean("bar.enabled", true);
+        // 玩家个人开关的默认值：bar.enabled 是服务端总闸，这里是"默认给不给玩家显示"
+        this.healthBarEnabledByDefault = config.getBoolean("bar.enabled-by-default",
+                this.healthBarEnabled);
         String livingTitle = config.getString("bar.title.living", DEFAULT_BAR_LIVING_TITLE);
         this.healthBarLivingTitle = (livingTitle == null || livingTitle.isEmpty()) ? DEFAULT_BAR_LIVING_TITLE : livingTitle;
         String deadTitle = config.getString("bar.title.dead", DEFAULT_BAR_DEAD_TITLE);
@@ -487,6 +491,16 @@ public final class PluginConfig {
     /** 受击生物血条总开关。 */
     public boolean healthBarEnabled() {
         return healthBarEnabled;
+    }
+
+    /**
+     * 血条的<b>玩家默认</b>开关（个人开关可覆盖，见 storage）。
+     *
+     * <p>{@code bar.enabled} 是服务端总闸：关掉后任何玩家都收不到血条；
+     * 这一项只在总闸开启时决定"默认给不给玩家看"。</p>
+     */
+    public boolean healthBarEnabledByDefault() {
+        return healthBarEnabledByDefault;
     }
 
     /** 存活状态血条标题模板（占位符见 {@code config.yml} 的 bar 注释）。 */

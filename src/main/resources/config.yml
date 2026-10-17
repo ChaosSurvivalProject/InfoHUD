@@ -118,6 +118,7 @@ biome-notification:
 # 随玩家视角转向自动更新；与底部信息栏完全独立开关
 #   /infohud toggle          切底部信息栏
 #   /infohud toggle compass  切顶部罗盘
+#   /infohud toggle healthbar  切受击血条
 # ------------------------------------------------------------
 compass:
   # 玩家默认是否开启罗盘（个人开关会覆盖它，见 storage）
@@ -139,6 +140,7 @@ compass:
 # 在线玩家，停留 time 个 tick（默认 100 = 5 秒）后自动消失；期间再被攻击会刷新内容与
 # 倒计时，死亡时切换为 title.dead 模板
 # 注意：自然掉血（摔落/火焰/溺水/窒息/虚空）与怪物互殴等非玩家来源不显示血条
+# 每名玩家可用 /infohud toggle healthbar 自己开关（权限 infohud.healthbar）
 # 标题占位符（MiniMessage 标签与 & 颜色代码可混用；& 代码是否生效见 hud.ampersand-colors）：
 #   <entity>  生物的原版翻译名（translatable 组件，客户端按自己语言渲染成"末影人/Enderman"）
 #   <name>    生物自定义名；没有名字时显示 <entity>
@@ -147,8 +149,13 @@ compass:
 #   <damage>  本次受到的最终伤害（已扣护甲等修正）
 # ------------------------------------------------------------
 bar:
-  # 血条显示总开关（关掉后不再生成血条；reload 会摘掉已显示的血条）
+  # 血条显示总开关（服务端总闸：关掉后所有玩家都收不到血条；
+  # reload 会摘掉已显示的血条）
   enabled: true
+
+  # 玩家默认是否接收血条（个人开关会覆盖它，见 storage 与 /infohud toggle healthbar）
+  # 留空或删掉这一行时跟随 enabled 的取值
+  enabled-by-default: true
 
   title:
     living: "<gray><health>/<max> <reset><name> -<damage><red>♥"

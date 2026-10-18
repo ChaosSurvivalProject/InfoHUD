@@ -2,8 +2,11 @@ package dev.infohud.bar;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.UUID;
 
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
@@ -153,6 +156,37 @@ class HealthBarServiceTest {
         for (BarColor color : BarColor.values()) {
             assertNotNull(HealthBarService.toAdventure(color), color.name());
         }
+    }
+
+    @Test
+    @DisplayName("血条归属键按「玩家 + 生物」区分：同一只怪不同玩家 = 两条独立血条")
+    void barKeySeparatesPlayers() {
+        UUID playerA = UUID.randomUUID();
+        UUID playerB = UUID.randomUUID();
+        UUID zombie = UUID.randomUUID();
+
+        HealthBarService.BarKey aHitsZombie = new HealthBarService.BarKey(playerA, zombie);
+        HealthBarService.BarKey bHitsZombie = new HealthBarService.BarKey(playerB, zombie);
+        HealthBarService.BarKey aHitsZombieAgain = new HealthBarService.BarKey(playerA, zombie);
+
+        // 回归：以前键里只有生物 UUID，A 和 B 共用一个键，于是 B 也能看到 A 的血条。
+        // 现在键含攻击者，两个玩家必须拿到不同的键。
+        assertNotEquals(aHitsZombie, bHitsZombie,
+                "不同玩家打同一只生物必须是两条独立血条");
+        // 同一个人再次攻击同一只生物 = 同一个键（刷新原血条，不会越积越多）
+        assertEquals(aHitsZombie, aHitsZombieAgain,
+                "同一玩家重复攻击同一生物应复用同一条血条");
+        // equals/hashCode 一致：能正确当 HashMap 键用
+        assertEquals(aHitsZombie.hashCode(), aHitsZombieAgain.hashCode());
+    }
+
+    @Test
+    @DisplayName("血条归属键也按生物区分：同一玩家打两只不同的怪 = 两条血条")
+    void barKeySeparatesEntities() {
+        UUID player = UUID.randomUUID();
+        HealthBarService.BarKey zombie = new HealthBarService.BarKey(player, UUID.randomUUID());
+        HealthBarService.BarKey skeleton = new HealthBarService.BarKey(player, UUID.randomUUID());
+        assertNotEquals(zombie, skeleton);
     }
 
     /** 组件树里是否含 translatable（含子组件）。 */

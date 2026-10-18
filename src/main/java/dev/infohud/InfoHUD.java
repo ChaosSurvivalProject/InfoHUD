@@ -27,7 +27,7 @@ import dev.infohud.placeholder.InfoHUDExpansion;
  *
  * <p>轻量级实时信息 HUD：在 ActionBar 上持续显示游戏时间、现实时间、昼夜时段与当前生物群系，
  * 在顶部 BossBar 上显示方向罗盘（NSWE + 角度 + 刻度，随视角转向更新），
- * 为受击生物显示独立 BossBar 血条（停留数秒后自动消失，仅玩家攻击时触发），
+ * 为受击生物显示 BossBar 血条（停留数秒后自动消失，仅玩家攻击时触发，且只有攻击者本人可见），
  * 并在玩家进入新群系时发提示。纯服务端插件，客户端无需安装任何东西。</p>
  *
  * <p>运行结构：</p>
@@ -41,7 +41,7 @@ import dev.infohud.placeholder.InfoHUDExpansion;
  *     ├─ CompassTask (BukkitRunnable)  主线程定时刷新顶部 BossBar 罗盘
  *     │    └─ CompassService   每玩家独占 BossBar + 方位角缓存
  *     ├─ HealthBarSweepTask (BukkitRunnable)  定时清扫到期的受击血条
- *     │    └─ HealthBarService  伤害/死亡事件 → 每生物独占 BossBar 血条
+ *     │    └─ HealthBarService  伤害/死亡事件 → 每个攻击者各自一条 BossBar 血条
  *     ├─ PlayerMoveListener    仅跨方块时触发群系复检
  *     ├─ PlayerConnectionListener 上线建基线 / 离线清理 / 换世界重建
  *     └─ InfoHUDExpansion      PlaceholderAPI 可选集成

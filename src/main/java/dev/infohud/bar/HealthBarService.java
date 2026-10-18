@@ -21,7 +21,6 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
 import dev.infohud.InfoHUD;
@@ -36,20 +35,23 @@ import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
 /**
- * 受击生物血条：**只有玩家攻击生物**（近战或玩家射出的投射物）时才为它生成一条
- * <b>独立</b>的 BossBar 显示给全部在线玩家，停留 {@code bar.time} 个 tick
- * （默认 60 = 3 秒）后自动消失。
+ * 受击生物血条：**只有玩家攻击生物**（近战或玩家射出的投射物）时，为该攻击者生成一条
+ * <b>只属于他自己</b>的 BossBar，停留 {@code bar.time} 个 tick（默认 60 = 3 秒）后自动消失。
+ *
+ * <p><b>血条是「攻击者 × 生物」一一独占的</b>：玩家 A 打了僵尸，只有 A 能看到这条血条，
+ * 旁边的玩家 B 完全看不到；B 自己也去打了同一只僵尸，才会生成 B 自己的那一条，
+ * 并且两条各自独立计时、独立刷新（A 一直在打只会刷新 A 那条，B 那条照常倒计时消失）。</p>
  *
  * <ul>
- *   <li>再次受击：刷新标题/进度并重置倒计时；</li>
- *   <li>死亡（{@link EntityDeathEvent} 或最后一次伤害把血打空）：切换到 {@code bar.title.dead}
- *       模板，进度归零，停留<b>更短的</b> {@code bar.dead-time} 个 tick（默认 20 = 1 秒）
- *       —— 死亡是终局信息，看一眼就够，不必和存活血条一样久；</li>
+ *   <li>再次受击：刷新标题/进度并重置倒计时（只影响攻击者自己那条）；</li>
+ *   <li>死亡（{@link EntityDeathEvent} 或最后一次伤害把血打空）：该生物身上所有攻击者的
+ *       血条都切换到 {@code bar.title.dead} 模板，进度归零，停留<b>更短的</b>
+ *       {@code bar.dead-time} 个 tick（默认 20 = 1 秒）—— 死亡是终局信息，看一眼就够；</li>
  *   <li>黑名单（{@code blacklist}，默认 ENDER_DRAGON / WITHER / PLAYER / ARMOR_STAND）内的
  *       实体类型不显示血条；</li>
  *   <li>总开关 {@code bar.enabled} 关闭时不生成新血条，{@code reload} 会摘掉已显示的血条；</li>
  *   <li>每名玩家还能用 {@code /infohud toggle healthbar} 自己开关血条，权限 {@code infohud.healthbar}；
- *       关掉的玩家<b>连包都不收</b>（新建血条时就不会加给他）。</li>
+ *       关掉的玩家<b>连包都不收</b>（受击时不会给他人建血条）。</li>
  * </ul>
  *
  * <p>标题占位符（模板里原样写尖括号形式）：</p>
@@ -82,18 +84,34 @@ public final class HealthBarService implements Listener {
     /** 血条标题专用 MiniMessage（非严格：未知标签丢弃，不会打断标题）。 */
     private static final MiniMessage TITLE_MINI = MiniMessage.builder().strict(false).build();
 
-    /** 单实体血条状态：BossBar 本体 + 到点消失的绝对 tick + 本次受到的伤害。 */
+    /**
+     * 血条归属键：一条血条属于「某个攻击者 × 某个生物」这一对。
+     *
+     * <p>用这个键而不是「生物」当键，是血条互相独立的关键：
+     * 同一个人打同一只怪 → 同一对（刷新原血条）；
+     * 不同人打同一只怪 → 不同对（各自一条、各自计时、只有自己看得见）。</p>
+     *
+     * <p>包内可见是给单测用的：{@code HealthBarServiceTest} 直接断言
+     * “玩家不同 → 键不同”，防止以后有人把键改回只用生物 UUID，
+     * 那会让所有人的血条重新串在一起。</p>
+     */
+    record BarKey(UUID playerId, UUID entityId) {
+    }
+
+    /** 单条血条状态：BossBar 本体 + 归属的攻击者 + 到点消失的绝对 tick + 本次受到的伤害。 */
     private static final class BarState {
         final BossBar bar;
+        final UUID playerId;
         long expiryTick;
         double lastDamage;
 
-        BarState(BossBar bar) {
+        BarState(BossBar bar, UUID playerId) {
             this.bar = bar;
+            this.playerId = playerId;
         }
     }
 
-    private final Map<UUID, BarState> bars = new ConcurrentHashMap<>();
+    private final Map<BarKey, BarState> bars = new ConcurrentHashMap<>();
     private final InfoHUD plugin;
 
     public HealthBarService(InfoHUD plugin) {
@@ -107,6 +125,8 @@ public final class HealthBarService implements Listener {
      * 喷溅药水……）。自然掉血（摔落、火焰、溺水、窒息、虚空）与非玩家来源
      * （怪物互殴、骷髅射箭、铁砧坠落、TNT）都不出血条。
      *
+     * <p>血条只发给<b>造成这次伤害的那名玩家</b>，其他在线玩家收不到任何东西。</p>
+     *
      * <p>{@code MONITOR + ignoreCancelled}：被其它插件取消的伤害不改血量，直接跳过。</p>
      */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -118,7 +138,12 @@ public final class HealthBarService implements Listener {
         if (!(event.getEntity() instanceof LivingEntity living)) {
             return;
         }
-        if (!isPlayerCaused(event.getDamager())) {
+        Player attacker = playerAttacker(event.getDamager());
+        if (attacker == null) {
+            return;
+        }
+        // 攻击者自己关了血条（或没权限）：不建、也不刷新，别人更不会看到他的血条
+        if (!seesHealthBars(attacker)) {
             return;
         }
         double damage = event.getFinalDamage();
@@ -134,10 +159,11 @@ public final class HealthBarService implements Listener {
         Component title = buildTitle(living, healthAfter, damage, dead, config);
         float progress = (float) (dead ? 0.0 : progressOf(healthAfter, living));
 
-        BarState state = bars.get(living.getUniqueId());
+        BarKey key = new BarKey(attacker.getUniqueId(), living.getUniqueId());
+        BarState state = bars.get(key);
         if (state == null) {
             // 首帧就带上真实标题/进度：避免先给玩家一条空标题血条再补发更新包
-            state = createBar(config, living, title, progress);
+            state = createBar(config, attacker, key, title, progress);
         } else {
             state.bar.name(title);
             state.bar.progress(progress);
@@ -147,7 +173,7 @@ public final class HealthBarService implements Listener {
     }
 
     /**
-     * 伤害来源是否算「玩家攻击」：
+     * 伤害来源对应的「玩家攻击者」，不是玩家造成的伤害返回 null：
      * <ul>
      *   <li>玩家本人（近战、末影珍珠瞬移判定等直接伤害）；</li>
      *   <li>玩家射出的投射物（箭 / 弩箭 / 雪球 / 喷溅与滞留药水……）。</li>
@@ -156,27 +182,34 @@ public final class HealthBarService implements Listener {
      * <p>只回溯一层 {@code getShooter()}，因此骷髅射的箭、发射器射的箭、TNT、
      * 铁砧坠落这类非玩家来源同样不会触发出血条。</p>
      */
-    private static boolean isPlayerCaused(Entity damager) {
-        if (damager instanceof Player) {
-            return true;
+    private static Player playerAttacker(Entity damager) {
+        if (damager instanceof Player player) {
+            return player;
         }
-        return damager instanceof Projectile projectile && projectile.getShooter() instanceof Player;
+        if (damager instanceof Projectile projectile && projectile.getShooter() instanceof Player player) {
+            return player;
+        }
+        return null;
     }
 
-    /** 死亡时若血条还在：切到 dead 模板、进度归零、按更短的死亡时长重新计时。 */
+    /** 死亡时：该生物身上<b>所有攻击者</b>的血条都切到 dead 模板、进度归零、按更短的死亡时长重新计时。 */
     @EventHandler
     public void onDeath(EntityDeathEvent event) {
         if (!(event.getEntity() instanceof LivingEntity living)) {
             return;
         }
-        BarState state = bars.get(living.getUniqueId());
-        if (state == null) {
-            return;
-        }
+        UUID entityId = living.getUniqueId();
         PluginConfig config = plugin.config();
-        state.expiryTick = Bukkit.getCurrentTick() + lifetimeTicks(config, true);
-        state.bar.name(buildTitle(living, 0.0, state.lastDamage, true, config));
-        state.bar.progress(0.0f);
+        long expiry = Bukkit.getCurrentTick() + lifetimeTicks(config, true);
+        for (Map.Entry<BarKey, BarState> entry : bars.entrySet()) {
+            if (!entry.getKey().entityId().equals(entityId)) {
+                continue;
+            }
+            BarState state = entry.getValue();
+            state.expiryTick = expiry;
+            state.bar.name(buildTitle(living, 0.0, state.lastDamage, true, config));
+            state.bar.progress(0.0f);
+        }
     }
 
     /**
@@ -190,23 +223,22 @@ public final class HealthBarService implements Listener {
         return dead ? config.healthBarDeadTimeTicks() : config.healthBarTimeTicks();
     }
 
-    /** 新玩家上线：把当时还活着、且该玩家有权限与开关的血条加给他。 */
-    @EventHandler
-    public void onJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-        if (!seesHealthBars(player)) {
-            return;
-        }
-        for (BarState state : bars.values()) {
-            player.showBossBar(state.bar);
-        }
-    }
-
-    /** 玩家离线：从所有血条上摘掉，避免 BossBar 包继续发给已离线的玩家。 */
+    /**
+     * 玩家离线：删掉属于他的所有血条。
+     *
+     * <p>血条本来就只发给他一个人，因此不需要（也不应该）动别人的血条。
+     * 上线时也无需补发：他刚上线，自然没有任何「自己打出来的」血条。</p>
+     */
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        for (BarState state : bars.values()) {
-            event.getPlayer().hideBossBar(state.bar);
+        UUID id = event.getPlayer().getUniqueId();
+        Iterator<Map.Entry<BarKey, BarState>> it = bars.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<BarKey, BarState> entry = it.next();
+            if (entry.getKey().playerId().equals(id)) {
+                event.getPlayer().hideBossBar(entry.getValue().bar);
+                it.remove();
+            }
         }
     }
 
@@ -227,16 +259,22 @@ public final class HealthBarService implements Listener {
     }
 
     /**
-     * 玩家切换了自己的血条开关后立即生效：开启则补上当前所有血条，
-     * 关闭则立刻从所有血条上摘掉，不等下一次受击。
+     * 玩家切换了自己的血条开关后立即生效：开启则补上自己现有的血条，
+     * 关闭则立刻把自己的血条摘掉，不等下一次受击。
+     *
+     * <p>只动<b>这个玩家自己</b>的血条 —— 他的开关不该影响别人看到的内容。</p>
      */
     public void refreshFor(Player player) {
         boolean visible = seesHealthBars(player);
-        for (BarState state : bars.values()) {
+        UUID id = player.getUniqueId();
+        for (Map.Entry<BarKey, BarState> entry : bars.entrySet()) {
+            if (!entry.getKey().playerId().equals(id)) {
+                continue;
+            }
             if (visible) {
-                player.showBossBar(state.bar);
+                player.showBossBar(entry.getValue().bar);
             } else {
-                player.hideBossBar(state.bar);
+                player.hideBossBar(entry.getValue().bar);
             }
         }
     }
@@ -244,18 +282,18 @@ public final class HealthBarService implements Listener {
     // ------------------------- 生命周期 -------------------------
 
     /**
-     * 扫掉已到期的血条（由 {@link HealthBarSweepTask} 每 20 tick 调一次）。
+     * 扫掉已到期的血条（由 {@link HealthBarSweepTask} 每 5 tick 调一次）。
      * 空表时只是走一遍空迭代器，开销可忽略。
      *
      * @return 清扫后剩余的血条数
      */
     int sweepExpired() {
         long now = Bukkit.getCurrentTick();
-        Iterator<Map.Entry<UUID, BarState>> it = bars.entrySet().iterator();
+        Iterator<Map.Entry<BarKey, BarState>> it = bars.entrySet().iterator();
         while (it.hasNext()) {
             BarState state = it.next().getValue();
             if (state.expiryTick <= now) {
-                hideFromAll(state.bar);
+                hideFrom(state);
                 it.remove();
             }
         }
@@ -265,36 +303,36 @@ public final class HealthBarService implements Listener {
     /** 配置重载 / 插件停用：摘掉全部血条（之后按新配置重建）。 */
     public void closeAll() {
         for (BarState state : bars.values()) {
-            hideFromAll(state.bar);
+            hideFrom(state);
         }
         bars.clear();
     }
 
-    /** 当前挂着的血条数（status 展示用）。 */
+    /** 当前挂着的血条数（status 展示用；跨全部玩家合计）。 */
     public int size() {
         return bars.size();
     }
 
     // ------------------------- 内部 -------------------------
 
-    private BarState createBar(PluginConfig config, LivingEntity entity, Component title, float progress) {
+    /**
+     * 为「这名攻击者 + 这只生物」建一条血条，并且<b>只发包给他一个人</b>。
+     */
+    private BarState createBar(PluginConfig config, Player attacker, BarKey key,
+                               Component title, float progress) {
         BossBar bar = BossBar.bossBar(title, progress,
                 toAdventure(config.healthBarColor()), toAdventure(config.healthBarOverlay()));
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            // 只发给开了血条且有权限的玩家：关掉的玩家连包都不收
-            if (seesHealthBars(player)) {
-                player.showBossBar(bar);
-            }
-        }
-        BarState state = new BarState(bar);
-        bars.put(entity.getUniqueId(), state);
+        attacker.showBossBar(bar);
+        BarState state = new BarState(bar, attacker.getUniqueId());
+        bars.put(key, state);
         return state;
     }
 
-    /** 让所有在线玩家都不再看到这条血条（Adventure 侧没有 removeAll，逐个 hide）。 */
-    private static void hideFromAll(BossBar bar) {
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            player.hideBossBar(bar);
+    /** 让血条的主人不再看到它（Adventure 侧没有 removeAll，必须精确 hide 给持有者）。 */
+    private static void hideFrom(BarState state) {
+        Player owner = Bukkit.getPlayer(state.playerId);
+        if (owner != null) {
+            owner.hideBossBar(state.bar);
         }
     }
 

@@ -12,7 +12,7 @@ concurrency:
   group: prerelease-${{ github.ref }}
   cancel-in-progress: true
 
-# 发布 Release 需要写权限（GITHUB_TOKEN 默认只读）
+# 发布 / 删除 Release 与 tag 都需要写权限（GITHUB_TOKEN 默认只读）
 permissions:
   contents: write
 
@@ -63,10 +63,23 @@ jobs:
           # 每次构建一个独立 tag：tag 永远指向真实提交，历史产物也不会被覆盖
           echo "asset_path=$asset_path" >> "$GITHUB_OUTPUT"
           echo "asset_name=$asset_name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=InfoHUD-${version}-build.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "tag_name=v${version}-pre.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "title=InfoHUD ${version} 预发布版 #${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
+      # 插件 jar 直接挂到本次 workflow run 上，在 Actions 运行详情页底部即可下载
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.artifact_name }}
+          path: ${{ steps.meta.outputs.asset_path }}
+          if-no-files-found: error
+          # 预发布 jar 体积小，保留期与 Release 生命周期无关，取默认上限即可
+          retention-days: 90
+
       - name: Publish prerelease
+        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -92,10 +105,81 @@ jobs:
               --generate-notes
           fi
 
+          # 记录本条的创建时间：清理旧预发布时只删比它更早的，
+          # 这样重跑一个旧 run 也不会把更新的预发布误删
+          created_at="$(gh release view "$TAG_NAME" --json createdAt --jq .createdAt)"
+          echo "created_at=$created_at" >> "$GITHUB_OUTPUT"
+
+      # 预发布只保留最新一条：更早的 Release 连同 tag 一起删掉（正式版不受影响）
+      - name: Clean up old prereleases
+        id: cleanup
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ steps.meta.outputs.tag_name }}
+          CURRENT_CREATED_AT: ${{ steps.publish.outputs.created_at }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          removed=0
+
+          # tag 形如 v1.0.0-pre.12：base 是版本号，number 是 run number（单调递增）
+          current_base="${TAG_NAME%-pre.*}"
+          current_number="${TAG_NAME##*-pre.}"
+
+          # 判断某个历史预发布是否该删：同版本比 run number；
+          # 跨版本则比创建时间，保证旧 run 重跑时不会误删更新的预发布
+          is_outdated() {
+            local tag="$1" created="$2" base number
+            base="${tag%-pre.*}"
+            number="${tag##*-pre.}"
+            case "$number" in ''|*[!0-9]*) return 1 ;; esac   # 不是本工作流的命名
+            if [ "$base" = "$current_base" ]; then
+              [ "$number" -lt "$current_number" ]
+            else
+              [ -n "$created" ] && [[ "$created" < "$CURRENT_CREATED_AT" ]]
+            fi
+          }
+
+          while IFS=$'\t' read -r old_tag old_created; do
+            [ -z "$old_tag" ] && continue
+            [ "$old_tag" = "$TAG_NAME" ] && continue
+            is_outdated "$old_tag" "$old_created" || continue
+            echo "删除旧预发布 $old_tag（连同 tag）"
+            gh release delete "$old_tag" --yes --cleanup-tag
+            removed=$((removed + 1))
+          done < <(gh release list --limit 100 --json tagName,isPrerelease,createdAt \
+            --jq '.[] | select(.isPrerelease) | [.tagName, .createdAt] | @tsv')
+
+          # 兜底：清掉没有对应 Release 的遗留预发布 tag（只删指向 HEAD 祖先提交的，防止误删并行构建）
+          while IFS= read -r ref; do
+            orphan_tag="${ref#refs/tags/}"
+            [ -z "$orphan_tag" ] && continue
+            [ "$orphan_tag" = "$TAG_NAME" ] && continue
+            is_outdated "$orphan_tag" "" || continue
+            gh release view "$orphan_tag" >/dev/null 2>&1 && continue
+            git merge-base --is-ancestor "$orphan_tag^{commit}" HEAD 2>/dev/null || continue
+            echo "删除遗留 tag $orphan_tag"
+            gh api --method DELETE "repos/$GH_REPO/git/refs/tags/$orphan_tag" >/dev/null
+            removed=$((removed + 1))
+          done < <(gh api --paginate "repos/$GH_REPO/git/matching-refs/tags/v" --jq '.[].ref')
+
+          echo "本次清理了 $removed 个旧预发布/tag"
+          echo "removed=$removed" >> "$GITHUB_OUTPUT"
+
+      - name: Write job summary
+        env:
+          ASSET_NAME: ${{ steps.meta.outputs.asset_name }}
+          ARTIFACT_NAME: ${{ steps.meta.outputs.artifact_name }}
+          TAG_NAME: ${{ steps.meta.outputs.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
           {
             echo "### 预发布已发布"
             echo ""
             echo "- 产物：\`$ASSET_NAME\`"
+            echo "- Actions 产物：\`$ARTIFACT_NAME\`（本页底部 Artifacts 区可下载）"
             echo "- tag：\`$TAG_NAME\`"
             echo "- 提交：\`${GITHUB_SHA}\`"
             echo "- 下载：[$TAG_NAME](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG_NAME})"

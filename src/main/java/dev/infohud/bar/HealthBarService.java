@@ -104,6 +104,16 @@ public final class HealthBarService implements Listener {
         final UUID playerId;
         long expiryTick;
         double lastDamage;
+        /**
+         * 标题里<b>当前已经显示</b>的血量 / 上限（格式化后的文本）。
+         *
+         * <p>用来判断“血量真的变了”才重发标题：清扫任务每 5 tick 跑一次，
+         * 若不做这个比较，一条静止的血条每秒会白发 4 次标题包。</p>
+         */
+        String shownHealth;
+        String shownMax;
+        /** 是否已经切到死亡样式：死亡后不再按存活血量同步。 */
+        boolean dead;
 
         BarState(BossBar bar, UUID playerId) {
             this.bar = bar;
@@ -156,7 +166,9 @@ public final class HealthBarService implements Listener {
         // 伤害事件在扣血<b>之前</b>触发，得自己算受击后的血量
         double healthAfter = Math.max(0.0, living.getHealth() - damage);
         boolean dead = healthAfter <= 0;
-        Component title = buildTitle(living, healthAfter, damage, dead, config);
+        String healthText = formatHealth(dead ? 0.0 : healthAfter);
+        String maxText = formatHealth(maxHealth(living));
+        Component title = buildTitle(living, healthText, maxText, formatHealth(damage), dead, config);
         float progress = (float) (dead ? 0.0 : progressOf(healthAfter, living));
 
         BarKey key = new BarKey(attacker.getUniqueId(), living.getUniqueId());
@@ -169,6 +181,10 @@ public final class HealthBarService implements Listener {
             state.bar.progress(progress);
         }
         state.lastDamage = damage;
+        // 记下刚显示出去的血量：之后清扫任务据此判断要不要为“自然回血”重发包
+        state.shownHealth = healthText;
+        state.shownMax = maxText;
+        state.dead = dead;
         state.expiryTick = Bukkit.getCurrentTick() + lifetimeTicks(config, dead);
     }
 
@@ -201,13 +217,17 @@ public final class HealthBarService implements Listener {
         UUID entityId = living.getUniqueId();
         PluginConfig config = plugin.config();
         long expiry = Bukkit.getCurrentTick() + lifetimeTicks(config, true);
+        String maxText = formatHealth(maxHealth(living));
         for (Map.Entry<BarKey, BarState> entry : bars.entrySet()) {
             if (!entry.getKey().entityId().equals(entityId)) {
                 continue;
             }
             BarState state = entry.getValue();
             state.expiryTick = expiry;
-            state.bar.name(buildTitle(living, 0.0, state.lastDamage, true, config));
+            state.dead = true;
+            state.shownHealth = "0";
+            state.shownMax = maxText;
+            state.bar.name(buildTitle(living, "0", maxText, formatHealth(state.lastDamage), true, config));
             state.bar.progress(0.0f);
         }
     }
@@ -282,7 +302,8 @@ public final class HealthBarService implements Listener {
     // ------------------------- 生命周期 -------------------------
 
     /**
-     * 扫掉已到期的血条（由 {@link HealthBarSweepTask} 每 5 tick 调一次）。
+     * 扫掉已到期的血条（由 {@link HealthBarSweepTask} 每 5 tick 调一次），
+     * 顺便把<b>还没到期</b>的血条同步到生物当前血量。
      * 空表时只是走一遍空迭代器，开销可忽略。
      *
      * @return 清扫后剩余的血条数
@@ -291,13 +312,46 @@ public final class HealthBarService implements Listener {
         long now = Bukkit.getCurrentTick();
         Iterator<Map.Entry<BarKey, BarState>> it = bars.entrySet().iterator();
         while (it.hasNext()) {
-            BarState state = it.next().getValue();
+            Map.Entry<BarKey, BarState> entry = it.next();
+            BarState state = entry.getValue();
             if (state.expiryTick <= now) {
                 hideFrom(state);
                 it.remove();
+                continue;
             }
+            syncHealth(entry.getKey(), state);
         }
         return bars.size();
+    }
+
+    /**
+     * 把血条同步到生物的<b>实时血量</b>：悦灵、狼、猫、马这类生物会自然回血，
+     * 药水、生命偷取、其它插件 {@code setHealth} 也会改血量 —— 只靠受击事件更新的话，
+     * 标题会一直停在“挨打那一刻”的旧数值直到血条消失。
+     *
+     * <p>只在<b>存活</b>且血量/上限<b>真的变了</b>时才重发标题包：
+     * 本方法每 5 tick 跑一次，不做比较的话一条静止的血条每秒要白发 4 次。
+     * 死亡样式是终局信息，不再跟随（生物已经死了，{@code getHealth()} 恒为 0）。</p>
+     */
+    private void syncHealth(BarKey key, BarState state) {
+        if (state.dead) {
+            return;
+        }
+        Entity entity = Bukkit.getEntity(key.entityId());
+        if (!(entity instanceof LivingEntity living) || !living.isValid() || living.isDead()) {
+            return;
+        }
+        double health = Math.max(0.0, living.getHealth());
+        String healthText = formatHealth(health);
+        String maxText = formatHealth(maxHealth(living));
+        if (healthText.equals(state.shownHealth) && maxText.equals(state.shownMax)) {
+            return;
+        }
+        state.shownHealth = healthText;
+        state.shownMax = maxText;
+        PluginConfig config = plugin.config();
+        state.bar.name(buildTitle(living, healthText, maxText, formatHealth(state.lastDamage), false, config));
+        state.bar.progress((float) progressOf(health, living));
     }
 
     /** 配置重载 / 插件停用：摘掉全部血条（之后按新配置重建）。 */
@@ -352,13 +406,12 @@ public final class HealthBarService implements Listener {
         };
     }
 
-    /** 按实体当前状态 + 配置模板构造血条标题组件。 */
-    private Component buildTitle(LivingEntity living, double healthAfter, double damage, boolean dead,
+    /** 按实体当前状态 + 配置模板构造血条标题组件（血量文本由调用方算好传进来）。 */
+    private Component buildTitle(LivingEntity living, String health, String max, String damage, boolean dead,
                                  PluginConfig config) {
         String template = dead ? config.healthBarDeadTitle() : config.healthBarLivingTitle();
         Component entityName = entityName(living);
-        return titleComponent(template, config, entityName, customName(living),
-                formatHealth(dead ? 0.0 : healthAfter), formatHealth(maxHealth(living)), formatHealth(damage));
+        return titleComponent(template, config, entityName, customName(living), health, max, damage);
     }
 
     /**

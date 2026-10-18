@@ -120,6 +120,38 @@ class HealthBarServiceTest {
     }
 
     @Test
+    @DisplayName("自然回血的同步判定：血量文本变了才需要重发标题")
+    void regenChangesTitleText() {
+        // 悦灵这类生物挨打后会自然回血：血条要跟着变，而不是停在挨打那一刻。
+        // 判定依据就是格式化后的血量文本，这里固定住“回血 → 文本确实变了”。
+        String hurt = HealthBarService.formatHealth(6.0);
+        String regenOne = HealthBarService.formatHealth(8.0);
+        String regenFull = HealthBarService.formatHealth(16.0);
+        assertNotEquals(hurt, regenOne, "回血后标题文本必须变化，否则血条永远显示旧数值");
+        assertNotEquals(regenOne, regenFull);
+
+        // 浮点抖动（16.0 vs 15.999999）不应该触发重发包：文本相同即视为没变
+        assertEquals(regenFull, HealthBarService.formatHealth(15.999999));
+
+        // 同血量反复取到的文本必须稳定，否则清扫任务每 5 tick 都会白发一次标题包
+        assertEquals(hurt, HealthBarService.formatHealth(6.0));
+    }
+
+    @Test
+    @DisplayName("回血后的标题能正确渲染出新血量与新进度")
+    void regenTitleRenders() {
+        PluginConfig config = TestConfigs.config("");
+        // 挨打后 6/16
+        Component hurt = HealthBarService.titleComponent(
+                "<health>/<max>", config, Component.text("Ally"), null, "6", "16", "10");
+        assertEquals("6/16", plain(hurt));
+        // 自然回到 16/16
+        Component healed = HealthBarService.titleComponent(
+                "<health>/<max>", config, Component.text("Ally"), null, "16", "16", "10");
+        assertEquals("16/16", plain(healed));
+    }
+
+    @Test
     @DisplayName("<entity> 占位符保留 translatable 组件：序列化后不能只剩裸翻译键")
     void entityPlaceholderStaysTranslatable() {
         // 回归：曾经为了塞进 Bukkit BossBar#setTitle(String) 而把整条组件用

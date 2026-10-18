@@ -13,9 +13,14 @@ import org.bukkit.entity.Player;
 
 import dev.infohud.Permissions;
 import dev.infohud.config.PluginConfig;
+import dev.infohud.text.DividerUtil;
 import dev.infohud.text.TextUtil;
 import dev.infohud.util.BiomeUtil;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextColor;
+import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import net.kyori.adventure.title.Title;
 
 /**
@@ -262,7 +267,13 @@ public final class BiomeService {
         sendNotification(player, biome, config);
     }
 
-    /** 发送提示：按配置选择屏幕中央大字或聊天栏消息。 */
+    /**
+     * 发送提示：按配置选择屏幕中央大字或聊天栏消息。
+     *
+     * <p>{@code title} 模式用 title 放大字文案、subtitle 放它下方的横线：
+     * subtitle 的缩放只有 title 的一半，正好可以做出“细线贴在字下面”的效果
+     * （横线字符数会按缩放比补足，见 {@link DividerUtil#build}）。</p>
+     */
     private void sendNotification(Player player, Biome biome, PluginConfig config) {
         PluginConfig.NotificationMode mode = config.notifyMode();
         if (mode == PluginConfig.NotificationMode.OFF) {
@@ -277,8 +288,9 @@ public final class BiomeService {
                             "%biome_id%", BiomeUtil.idOf(biome),
                             "%player%", player.getName()),
                     config);
+            Component subtitle = buildDivider(title, config);
             int staySeconds = config.centerDurationSeconds();
-            player.showTitle(Title.title(title, Component.empty(),
+            player.showTitle(Title.title(title, subtitle,
                     Title.Times.times(Duration.ofSeconds(1),
                             Duration.ofSeconds(staySeconds), Duration.ofSeconds(1))));
             return;
@@ -289,5 +301,28 @@ public final class BiomeService {
                 "%biome_id%", BiomeUtil.idOf(biome),
                 "%player%", player.getName());
         player.sendMessage(TextUtil.parse(filled, config));
+    }
+
+    /**
+     * 标题下方的横线组件。
+     *
+     * <p>形状是 {@code ————✦————}：填充段在中间符号左右<b>等长</b>，所以符号精确居中。
+     * 横线继承标题最外层的颜色（白色标题 → 白色横线，和参考图一致），
+     * 并强制加粗 + 关掉斜体 —— 原版字体的斜体会让横线歪掉。
+     * 横线长度为 0 时返回空组件（等于不画 subtitle）。</p>
+     */
+    private static Component buildDivider(Component title, PluginConfig config) {
+        String fill = config.centerDivider();
+        String symbol = config.centerDividerSymbol();
+        if (config.centerDividerScale() <= 0) {
+            return Component.empty();
+        }
+        String line = DividerUtil.build(PlainTextComponentSerializer.plainText().serialize(title),
+                fill, symbol, config.centerDividerScale());
+        if (line.isEmpty()) {
+            return Component.empty();
+        }
+        TextColor color = title.color() != null ? title.color() : NamedTextColor.WHITE;
+        return Component.text(line, color, TextDecoration.BOLD).decoration(TextDecoration.ITALIC, false);
     }
 }

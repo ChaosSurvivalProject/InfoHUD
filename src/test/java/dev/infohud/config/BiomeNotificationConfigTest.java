@@ -21,12 +21,55 @@ class BiomeNotificationConfigTest {
     }
 
     @Test
-    @DisplayName("缺省：中央大字标题就是群系名，不带“进入”字样；展示方式为 title")
+    @DisplayName("缺省：中央大字标题就是白色的群系名，不带“进入”字样；展示方式为 title")
     void defaultCenterTitleHasNoVerb() {
         PluginConfig config = TestConfigs.config("");
-        assertEquals("&b%biome%", config.centerTitle());
+        assertEquals("&f%biome%", config.centerTitle());
         assertEquals(PluginConfig.NotificationMode.TITLE, config.notifyMode());
         assertTrue(config.notifyEnabled());
+    }
+
+    // ------------------------- 标题横线 -------------------------
+
+    @Test
+    @DisplayName("缺省横线：中文破折号填充 + ✦ 居中，宽度是标题的 2.5 倍")
+    void defaultDivider() {
+        PluginConfig config = TestConfigs.config("");
+        assertEquals("\u2014", config.centerDivider());
+        assertEquals("\u2726", config.centerDividerSymbol());
+        assertEquals(2.5D, config.centerDividerScale(), 1e-9);
+    }
+
+    @Test
+    @DisplayName("divider / divider-symbol 可自定义，空串都允许（= 不画那一段）")
+    void dividerConfigurable() {
+        assertEquals("- ",
+                TestConfigs.config("biome-notification:\n  divider: \"- \"\n").centerDivider());
+        assertEquals("", TestConfigs.config("biome-notification:\n  divider: \"\"\n").centerDivider());
+        assertEquals("·",
+                TestConfigs.config("biome-notification:\n  divider-symbol: \"·\"\n").centerDividerSymbol());
+        assertEquals("",
+                TestConfigs.config("biome-notification:\n  divider-symbol: \"\"\n").centerDividerSymbol());
+    }
+
+    @Test
+    @DisplayName("上一版默认的填充字符 _ 会自动迁移成中文破折号")
+    void legacyUnderscoreFillMigrated() {
+        assertEquals("\u2014",
+                TestConfigs.config("biome-notification:\n  divider: \"_\"\n").centerDivider());
+    }
+
+    @Test
+    @DisplayName("divider-scale 负数夹到 0、过大夹到 12")
+    void dividerScaleClamped() {
+        assertEquals(0.0D,
+                TestConfigs.config("biome-notification:\n  divider-scale: -3\n").centerDividerScale(), 1e-9);
+        assertEquals(0.0D,
+                TestConfigs.config("biome-notification:\n  divider-scale: 0\n").centerDividerScale(), 1e-9);
+        assertEquals(12.0D,
+                TestConfigs.config("biome-notification:\n  divider-scale: 999\n").centerDividerScale(), 1e-9);
+        assertEquals(1.5D,
+                TestConfigs.config("biome-notification:\n  divider-scale: 1.5\n").centerDividerScale(), 1e-9);
     }
 
     // ------------------------- 展示方式 -------------------------
@@ -104,14 +147,17 @@ class BiomeNotificationConfigTest {
     void customCenterTitle() {
         assertEquals("&7欢迎来到 &b%biome%",
                 TestConfigs.config("biome-notification:\n  center-title: \"&7欢迎来到 &b%biome%\"\n").centerTitle());
-        assertEquals("&b%biome%", TestConfigs.config("biome-notification:\n  center-title: \"\"\n").centerTitle());
+        assertEquals("&f%biome%", TestConfigs.config("biome-notification:\n  center-title: \"\"\n").centerTitle());
     }
 
     @Test
-    @DisplayName("老配置里原封不动的旧默认值 &e进入 &b%biome% 迁移成新默认（只显示群系名）")
+    @DisplayName("老配置里的旧默认值统一迁移成新默认（白色、只显示群系名）")
     void legacyDefaultTitleMigrated() {
-        assertEquals("&b%biome%",
+        assertEquals("&f%biome%",
                 TestConfigs.config("biome-notification:\n  center-title: \"&e进入 &b%biome%\"\n").centerTitle());
+        // 上一版默认的青色标题也要迁移成白色
+        assertEquals("&f%biome%",
+                TestConfigs.config("biome-notification:\n  center-title: \"&b%biome%\"\n").centerTitle());
         // 但用户自己写的“说法”要保留
         assertEquals("&a已抵达 &b%biome%",
                 TestConfigs.config("biome-notification:\n  center-title: \"&a已抵达 &b%biome%\"\n").centerTitle());

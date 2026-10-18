@@ -95,7 +95,22 @@ biome-notification:
   #   %biome_id%  群系原始英文 ID
   #   %player%    玩家名
   # 可用同样的颜色代码 / MiniMessage 标签
-  center-title: "&b%biome%"
+  center-title: "&f%biome%"
+
+  # 标题下方的横线（subtitle），形状是：   ————✦————
+  #   divider         填充字符，只写纯字符（不要写颜色代码）。默认中文破折号 "—"，
+  #                   它在原版字体里撑满字格，连续重复会首尾相接成一条实线；
+  #                   写空串 "" 表示不画填充、只留中间符号
+  #   divider-symbol  横线正中的符号，默认 "✦"；写空串 "" 就是一条纯横线
+  #                   填充在符号左右等长，所以符号始终精确落在屏幕正中
+  #   divider-scale   横线显示宽度 = 标题显示宽度 × 这个倍数（0 = 不画线，上限 12）
+  #                   横线放在 subtitle 里（客户端缩放只有 title 的一半），
+  #                   字符数会按缩放比自动补足，所以不用为 subtitle 手动加长
+  # 横线颜色跟随标题（白色标题 → 白色横线），统一加粗、不用斜体；
+  # 横线宽度还会被夹在屏幕内，长群系名也不会被裁掉
+  divider: "—"
+  divider-symbol: "✦"
+  divider-scale: 2.5
 
   # mode=title 时大字在屏幕上停留的秒数（1~10，超出范围会被夹回）
   center-duration-seconds: 3

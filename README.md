@@ -112,7 +112,10 @@ biome-notification:
   enabled: true                       # 总开关（mode: off 与它等价）
   mode: title                         # title = 屏幕中央大字；chat = 聊天栏；off = 关闭
   message-format: "&a[InfoHUD] &e已到达 &b%biome%"   # mode=chat 时使用
-  center-title: "&b%biome%"            # mode=title 时中央大字标题（直接显示群系名）
+  center-title: "&f%biome%"            # mode=title 时中央大字标题（白色，直接显示群系名）
+  divider: "—"                        # 标题下方横线的填充字符（中文破折号）
+  divider-symbol: "✦"                 # 横线正中的符号（"" = 纯横线）
+  divider-scale: 2.5                  # 横线显示宽度 = 标题宽度 × 该倍数（0 = 不画线）
   center-duration-seconds: 3          # 中央大字停留秒数（1~10）
   memory-seconds: 300         # 群系记忆：同一群系 5 分钟内不再重复展示（0 = 关闭）
   min-move-distance: 5        # 距上次提示至少走 5 格才发，防交界线刷屏
@@ -126,15 +129,28 @@ storage:
 ```
 
 - **展示方式由 `mode` 一处决定，三选一**：
-  - `title`（默认）—— 屏幕中央大字，以 title 形式显示 `center-title` 文案（无 subtitle），
-    停留 `center-duration-seconds` 秒（默认 3，范围 1~10 自动夹取）；
+  - `title`（默认）—— 屏幕中央大字，以 title 形式显示 `center-title` 文案，
+    并在 subtitle 里补一条**标题下方的横线**，停留 `center-duration-seconds` 秒（默认 3，范围 1~10 自动夹取）；
   - `chat` —— 聊天栏消息，只使用 `message-format`；
   - `off` —— 完全关闭，不展示任何群系切换提示（与 `enabled: false` 效果相同）。
   兼容旧写法：`center` = `title`，`none` / `false` = `off`，升级不会让旧配置失效。
   `enabled: false` 时无论 `mode` 写什么都不提示（总开关优先）。
-- `title` 的默认文案就是**群系名本身**（`&b%biome%`），不再带“进入”字样；想加前缀自己写在模板里即可。
+- `title` 的默认文案就是**白色的群系名本身**（`&f%biome%`），不再带“进入”字样；想加前缀自己写在模板里即可。
   文案支持占位符 `%biome%`、`%biome_id%`、`%player%`，颜色写法与 `display-format` 完全一致
   （传统 `&`/`§` 代码或 MiniMessage 标签，由 `hud.text-mode` 决定解析方式）。
+- **标题横线**：形状是 `————✦————`。
+  - `divider` 是填充字符，默认中文破折号 `—`（U+2014）：它在原版字体里撑满字格，
+    连续重复会首尾相接成一条实线。只写纯字符，不要写颜色代码。
+  - `divider-symbol` 是正中符号，默认 `✦`（U+2726）。填充在符号**左右严格等长**，
+    所以不管标题多宽，符号都精确落在屏幕正中；写 `""` 就退化成一条纯横线。
+  - `divider-scale` 是横线显示宽度相对标题宽度的倍数（默认 2.5，0 = 不画线，上限 12）。
+  - 横线画在 **subtitle** 里，而 subtitle 的客户端缩放只有 title 的一半，所以代码会按缩放比
+    自动把字符数补足一倍 —— 不用自己加长。横线颜色跟随标题（白色标题 → 白色横线）、
+    强制加粗且不用斜体。长度按“半角 6px / 全角 9px / 空格 4px”估算，并且夹在屏幕内
+    （subtitle 不换行，超宽会被裁掉，所以长群系名的横线也不会溢出）。
+  - 升级后 `divider: "_"`（上一版默认）会自动迁移成 `—`，跟 `center-title` 的旧值迁移一致。
+  升级后若 `center-title` 还是旧默认值（`&b%biome%` 或更早的 `&e进入 &b%biome%`），
+  会自动迁移成新的白色默认值；自己改过的模板原样保留。
 
 - **群系记忆（默认 5 分钟）**：按“玩家 + 群系”计时，同一个群系在 `memory-seconds` 内
   已经展示过一次就不再展示 —— 在平原与森林之间来回穿行只会弹一次，离开再回来也不会立刻重弹。

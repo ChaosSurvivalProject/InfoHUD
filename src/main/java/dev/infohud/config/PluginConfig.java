@@ -110,8 +110,27 @@ public final class PluginConfig {
     /** 性能红线：ActionBar 最快 0.5 秒刷一次。 */
     public static final int MIN_INTERVAL_TICKS = 10;
 
-    private static final String DEFAULT_CENTER_TITLE = "&b%biome%";
+    private static final String DEFAULT_CENTER_TITLE = "&f%biome%";
     private static final int DEFAULT_CENTER_DURATION_SECONDS = 3;
+    /**
+     * 标题下方横线的默认填充字符：中文破折号 {@code —}。
+     * 它在原版 unicode 字体里撑满字格，连续重复会首尾相接成一条实线。
+     */
+    private static final String DEFAULT_DIVIDER_FILL = "\u2014";
+    /** 横线正中的默认符号。 */
+    private static final String DEFAULT_DIVIDER_CENTER = "\u2726";
+    /**
+     * 上一版默认的填充字符 {@code _}（当时的写法是“一串下划线”）。
+     * 配置里还是它时按新默认（中文破折号）处理，免得升级后线还是细碎的短横。
+     */
+    private static final String LEGACY_DIVIDER_FILL = "_";
+    /**
+     * 标题下方横线默认宽度倍数：横线显示宽度 = 标题显示宽度 × 该倍数。
+     * 2.5 大约是标题宽度的 2.5 倍，接近参考图里“文字短、横线长”的观感。
+     */
+    private static final double DEFAULT_DIVIDER_SCALE = 2.5D;
+    /** 横线宽度倍数的上限，防止配置写大了把 subtitle 撑出一屏。 */
+    private static final double MAX_DIVIDER_SCALE = 12.0D;
     /** 群系记忆默认时长：同一个群系 5 分钟内不再重复展示。 */
     private static final int DEFAULT_MEMORY_SECONDS = 300;
     /**
@@ -128,10 +147,15 @@ public final class PluginConfig {
 
     /**
      * 旧版默认中央大字模板。老服务器上的 config.yml 是 {@code saveDefaultConfig()} 生成的，
-     * 升级插件不会覆盖它，所以碰到这个“原封不动的旧默认值”时按新默认（只显示群系名）处理，
-     * 免得用户升级后还是看到“进入”。用户自己改过模板则完全尊重原样。
+     * 升级插件不会覆盖它，所以碰到这些“原封不动的旧默认值”时按新默认处理：
+     * <ul>
+     *   <li>{@code &e进入 &b%biome%} —— 更早版本的“进入 xxx”，改成只显示群系名；</li>
+     *   <li>{@code &b%biome%} —— 上一版默认的青色标题，改成白色。</li>
+     * </ul>
+     * 用户自己改过模板则完全尊重原样。
      */
-    private static final String LEGACY_CENTER_TITLE = "&e进入 &b%biome%";
+    private static final List<String> LEGACY_CENTER_TITLES =
+            List.of("&e进入 &b%biome%", "&b%biome%");
 
     // ---- bar（受击生物血条）----
     private static final String DEFAULT_BAR_LIVING_TITLE = "<gray><health>/<max> <reset><name> -<damage><red>♥";
@@ -165,6 +189,9 @@ public final class PluginConfig {
     private final String notifyFormat;
     private final NotificationMode notifyMode;
     private final String centerTitle;
+    private final String centerDivider;
+    private final String centerDividerSymbol;
+    private final double centerDividerScale;
     private final int centerDurationSeconds;
     private final int memorySeconds;
     private final double minMoveDistance;
@@ -242,11 +269,26 @@ public final class PluginConfig {
         this.notifyFormat = (notifyFormatRaw == null || notifyFormatRaw.isEmpty()) ? DEFAULT_NOTIFY_FORMAT : notifyFormatRaw;
         String centerTitleRaw = config.getString("biome-notification.center-title", DEFAULT_CENTER_TITLE);
         if (centerTitleRaw == null || centerTitleRaw.isEmpty()
-                || centerTitleRaw.trim().equals(LEGACY_CENTER_TITLE)) {
-            // 空值 = 没配；旧默认值 = 老版本的“进入 xxx”，统一换成只显示群系名的新默认
+                || LEGACY_CENTER_TITLES.contains(centerTitleRaw.trim())) {
+            // 空值 = 没配；旧默认值 = 老版本模板，统一换成新的白色标题
             centerTitleRaw = DEFAULT_CENTER_TITLE;
         }
         this.centerTitle = centerTitleRaw;
+        // 标题下方的横线：填充字符 + 中间符号 + 宽度倍数（0 = 不画线）。
+        // 不 trim：填充字符里的空格是构图的一部分（如 "- "），去掉会改变观感
+        String dividerFill = config.getString("biome-notification.divider");
+        if (dividerFill == null || dividerFill.trim().equals(LEGACY_DIVIDER_FILL)) {
+            // 没配 或 旧默认的 "_"（上一版写法）→ 换成中文破折号；
+            // 注意 "配了空串" 是有效意图（只显示符号），不能当成没配
+            dividerFill = DEFAULT_DIVIDER_FILL;
+        }
+        this.centerDivider = dividerFill;
+        String dividerSymbol = config.getString("biome-notification.divider-symbol",
+                DEFAULT_DIVIDER_CENTER);
+        this.centerDividerSymbol = dividerSymbol == null ? DEFAULT_DIVIDER_CENTER : dividerSymbol;
+        this.centerDividerScale = clamp(
+                config.getDouble("biome-notification.divider-scale", DEFAULT_DIVIDER_SCALE),
+                0.0D, MAX_DIVIDER_SCALE);
         this.centerDurationSeconds = clamp(config.getInt("biome-notification.center-duration-seconds",
                 DEFAULT_CENTER_DURATION_SECONDS), 1, 10);
         this.memorySeconds = clamp(config.getInt("biome-notification.memory-seconds",
@@ -367,6 +409,10 @@ public final class PluginConfig {
     }
 
     private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static double clamp(double value, double min, double max) {
         return Math.max(min, Math.min(max, value));
     }
 
@@ -521,6 +567,38 @@ public final class PluginConfig {
 
     public String centerTitle() {
         return centerTitle;
+    }
+
+    /**
+     * 中央大字标题下方横线的填充字符（默认中文破折号 {@code —}，U+2014）。
+     *
+     * <p>它在原版 unicode 字体里撑满字格，连续重复会首尾相接成一条实线。</p>
+     *
+     * <p>空串表示不画填充、只显示中间符号；写多字符时会整段重复（如 {@code "- "}），
+     * 实际重复段数由 {@link #centerDividerScale()} 与标题宽度决定。</p>
+     */
+    public String centerDivider() {
+        return centerDivider;
+    }
+
+    /**
+     * 横线正中的符号（默认 {@code ✦}，U+2726）。
+     *
+     * <p>空串表示不显示符号，退化成一条纯横线。填充段在符号左右两侧
+     * <b>等长</b>，因此符号始终落在屏幕正中。</p>
+     */
+    public String centerDividerSymbol() {
+        return centerDividerSymbol;
+    }
+
+    /**
+     * 横线显示宽度相对标题显示宽度的倍数（0 = 不画线，默认 2.5，上限 12）。
+     *
+     * <p>换算成字宽时会再乘 title/subtitle 的缩放比 2，
+     * 因为同一段文字在 subtitle 里只占 title 的一半宽度。</p>
+     */
+    public double centerDividerScale() {
+        return centerDividerScale;
     }
 
     /** 中央大字提示的停留时长（秒，1~10）。 */

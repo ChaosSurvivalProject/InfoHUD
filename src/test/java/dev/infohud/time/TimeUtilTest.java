@@ -52,6 +52,25 @@ class TimeUtilTest {
     }
 
     @Test
+    @DisplayName("世界天数从 1 开始，按 fullTime / 24000 累加")
+    void worldDayCountsFromOne() {
+        assertEquals(1L, TimeUtil.worldDay(0));
+        assertEquals(1L, TimeUtil.worldDay(23_999));
+        assertEquals(2L, TimeUtil.worldDay(24_000));
+        assertEquals(2L, TimeUtil.worldDay(47_999));
+        assertEquals(128L, TimeUtil.worldDay(127L * TimeUtil.DAY_TICKS));
+        assertEquals("1", TimeUtil.worldDays(0));
+        assertEquals("128", TimeUtil.worldDays(127L * TimeUtil.DAY_TICKS + 500));
+    }
+
+    @Test
+    @DisplayName("负数或异常 fullTime 兜底为第 1 天，不会出现 0 或负天数")
+    void worldDayClampsToAtLeastOne() {
+        assertEquals(1L, TimeUtil.worldDay(-1));
+        assertEquals(1L, TimeUtil.worldDay(-TimeUtil.DAY_TICKS * 5));
+    }
+
+    @Test
     @DisplayName("现实时间按指定时区输出，形状为 HH:mm:ss")
     void realTimeShape() {
         String value = TimeUtil.realTime(ZoneId.of("Asia/Shanghai"), DateTimeFormatter.ofPattern("HH:mm:ss"));

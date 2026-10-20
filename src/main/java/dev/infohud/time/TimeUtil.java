@@ -57,6 +57,25 @@ public final class TimeUtil {
     }
 
     /**
+     * 世界已流逝的天数，<b>从 1 开始</b>（新世界开局即“第 1 天”）。
+     *
+     * <p>{@code World#getTime()} 每天都会归零，跨天的累计值必须用 {@code World#getFullTime()}。
+     * 原版 {@code /time query day}（以及 F3）给的是从 0 开始的编号，本方法比它大 1。</p>
+     *
+     * @param fullTime {@code World#getFullTime()} 原始 tick
+     * @return 天数，至少为 1（负数/异常值兜底）
+     */
+    public static long worldDay(long fullTime) {
+        long day = fullTime / DAY_TICKS + 1;
+        return day < 1L ? 1L : day;
+    }
+
+    /** {@link #worldDay} 的字符串形式，供模板直接填充。 */
+    public static String worldDays(long fullTime) {
+        return Long.toString(worldDay(fullTime));
+    }
+
+    /**
      * 现实世界时间。
      *
      * @param zone      时区（来自配置，非法值已在配置层回退）

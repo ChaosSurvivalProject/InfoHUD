@@ -23,6 +23,7 @@ import me.clip.placeholderapi.expansion.PlaceholderExpansion;
  *   <li>{@code %infohud_biome%} —— 当前群系显示名（中文映射）</li>
  *   <li>{@code %infohud_biome_id%} —— 当前群系原始 ID</li>
  *   <li>{@code %infohud_world%} —— 当前世界名</li>
+ *   <li>{@code %infohud_world_days%} —— 当前世界天数（从 1 开始）</li>
  * </ul>
  *
  * <p>群系一律取自 {@code BiomeService} 的缓存：PlaceholderAPI 可能在异步线程解析占位符，
@@ -70,7 +71,8 @@ public final class InfoHUDExpansion extends PlaceholderExpansion {
                 "%infohud_daynight% - 昼夜时段",
                 "%infohud_biome% - 当前群系显示名",
                 "%infohud_biome_id% - 当前群系 ID",
-                "%infohud_world% - 当前世界名");
+                "%infohud_world% - 当前世界名",
+                "%infohud_world_days% - 当前世界天数");
     }
 
     @Override
@@ -104,6 +106,9 @@ public final class InfoHUDExpansion extends PlaceholderExpansion {
                 return BiomeUtil.idOf(plugin.biomes().cachedBiome(online.getUniqueId()));
             case "world":
                 return online.getWorld().getName();
+            case "world_days":
+            case "worlddays":
+                return TimeUtil.worldDays(online.getWorld().getFullTime());
             default:
                 return null;
         }

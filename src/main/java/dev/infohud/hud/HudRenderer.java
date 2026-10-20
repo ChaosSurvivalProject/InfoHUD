@@ -66,6 +66,7 @@ public final class HudRenderer {
                 "%gametime%", snapshot.gameTime(),
                 "%realtime%", context.realtime(),
                 "%daynight%", snapshot.dayNightLabel(),
+                "%world_days%", snapshot.worldDays(),
                 // 注意顺序：先替换更长的 %biome_id%，再替换 %biome%
                 "%biome_id%", BiomeUtil.idOf(biome),
                 "%biome%", BiomeUtil.displayName(biome, config),
@@ -103,7 +104,8 @@ public final class HudRenderer {
         DayNightRules rules = config.dayNightRules();
         WorldSnapshot snapshot = new WorldSnapshot(rawTime,
                 TimeUtil.gameTime(rawTime),
-                rules.label(rules.phase(rawTime)));
+                rules.label(rules.phase(rawTime)),
+                TimeUtil.worldDays(world.getFullTime()));
         tickSnapshots.put(world, snapshot);
         return snapshot;
     }
@@ -116,6 +118,8 @@ public final class HudRenderer {
                 "%gametime%", snapshot.gameTime(),
                 "%realtime%", TimeUtil.realTime(config.timezone(), config.realtimeFormatter()),
                 "%daynight%", snapshot.dayNightLabel(),
+                "%world_days%", snapshot.worldDays(),
+                // 注意顺序：先替换更长的 %biome_id%，再替换 %biome%
                 "%biome_id%", BiomeUtil.idOf(biome),
                 "%biome%", BiomeUtil.displayName(biome, config),
                 "%world%", player.getWorld().getName(),

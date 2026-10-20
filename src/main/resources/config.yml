@@ -21,6 +21,7 @@ hud:
   #   %biome%      当前生物群系名（见 biome-names 映射）
   #   %biome_id%   生物群系原始英文 ID
   #   %world%      世界名
+  #   %world_days% 世界天数（从 1 开始，取自 World#getFullTime；比 /time query day 大 1）
   #   %x% %y% %z%  玩家坐标（整数）
   #   %ping%       玩家延迟
   #   %tps%        服务器 TPS（保留 1 位小数）

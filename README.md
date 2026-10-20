@@ -270,6 +270,7 @@ display-format: "<gradient:#00ffcc:#0088ff>时间</gradient> &f%gametime% &8| &a
 | `%biome%` | 群系显示名 | `沙漠` |
 | `%biome_id%` | 群系原始 ID | `desert` |
 | `%world%` | 世界名 | `world` |
+| `%world_days%` | 世界天数（从 1 开始） | `128` |
 | `%x%` `%y%` `%z%` | 玩家方块坐标 | `128` |
 | `%ping%` | 玩家延迟 | `32` |
 | `%tps%` | 服务器 TPS（1 分钟窗口） | `20.0` |
@@ -290,6 +291,7 @@ display-format: "<gradient:#00ffcc:#0088ff>时间</gradient> &f%gametime% &8| &a
 %infohud_biome%      当前群系显示名
 %infohud_biome_id%   当前群系 ID
 %infohud_world%      当前世界名
+%infohud_world_days% 当前世界天数（从 1 开始）
 ```
 
 其它插件（全息、计分板、菜单）也能用这些占位符。群系取值来自缓存，**异步解析不会碰区块**。

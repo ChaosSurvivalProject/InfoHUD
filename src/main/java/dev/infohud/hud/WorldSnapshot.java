@@ -9,6 +9,7 @@ package dev.infohud.hud;
  * @param rawTime       {@code World#getTime()} 原始 tick
  * @param gameTime      游戏时间文本（HH:MM）
  * @param dayNightLabel 时段标签（已带配置里的颜色代码）
+ * @param worldDays     世界天数文本（从 1 开始，取自 {@code World#getFullTime()}）
  */
-public record WorldSnapshot(long rawTime, String gameTime, String dayNightLabel) {
+public record WorldSnapshot(long rawTime, String gameTime, String dayNightLabel, String worldDays) {
 }

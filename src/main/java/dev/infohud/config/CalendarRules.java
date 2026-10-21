@@ -24,7 +24,7 @@ import dev.infohud.time.WorldDate;
  *   <li>{@code month-seasons}：月份 → 季节键名，默认
  *       12/1/2 月 = {@code winter}、3/4/5 = {@code spring}、6/7/8 = {@code summer}、9/10/11 = {@code autumn}；</li>
  *   <li>{@code season-names}：季节键名 → 显示名，默认
- *       {@code spring: 春季}、{@code summer: 夏季}、{@code autumn: 秋季}、{@code winter: 冬季}。</li>
+ *       {@code spring: &a春季}、{@code summer: &e夏季}、{@code autumn: &6秋季}、{@code winter: &b冬季}。</li>
  * </ul>
  *
  * <p>键名大小写不敏感（配置里写 {@code Spring} 也认），内部统一转小写，
@@ -46,14 +46,19 @@ public final class CalendarRules {
     private static final int YEAR_MAX = 999_999_999;
     private static final int YEAR_MIN = -999_999_999;
 
-    /** 季节键名的默认显示名。 */
+    /**
+     * 季节键名的默认显示名（与 config.yml 的 {@code calendar.season-names} 默认值一致）。
+     *
+     * <p>默认带颜色：春 &amp;a、夏 &amp;e、秋 &amp;6、冬 &amp;b。颜色只是默认视觉，
+     * 配置里改了就以配置为准。</p>
+     */
     private static final Map<String, String> DEFAULT_SEASON_NAMES = new LinkedHashMap<>();
 
     static {
-        DEFAULT_SEASON_NAMES.put(SPRING, "春季");
-        DEFAULT_SEASON_NAMES.put(SUMMER, "夏季");
-        DEFAULT_SEASON_NAMES.put(AUTUMN, "秋季");
-        DEFAULT_SEASON_NAMES.put(WINTER, "冬季");
+        DEFAULT_SEASON_NAMES.put(SPRING, "&a春季");
+        DEFAULT_SEASON_NAMES.put(SUMMER, "&e夏季");
+        DEFAULT_SEASON_NAMES.put(AUTUMN, "&6秋季");
+        DEFAULT_SEASON_NAMES.put(WINTER, "&b冬季");
     }
 
     /**

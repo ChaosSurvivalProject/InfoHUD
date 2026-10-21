@@ -15,9 +15,9 @@ hud:
   update-interval-ticks: 20
 
   # 显示格式。可用占位符：
-  #   %gametime%   游戏时间 HH:MM
+  #   %gametime%   游戏时间 HH:MM（下界/末地默认显示乱码，见 day-night.garbled）
   #   %realtime%   现实时间 HH:MM:SS（时区见 timezone）
-  #   %daynight%   时段标签（日出/白天/日落/黑夜，见 day-night.labels）
+  #   %daynight%   时段标签（日出/白天/日落/黑夜，见 day-night.labels；下界/末地默认乱码）
   #   %biome%      当前生物群系名（见 biome-names 映射）
   #   %biome_id%   生物群系原始英文 ID
   #   %world%      世界名
@@ -27,7 +27,7 @@ hud:
   #   %world_day%   世界历法日（当月第几天，1~31）
   #   %world_date%  游戏日期 yyyy-MM-dd（月/日补零，如 0001-03-07）
   #   %world_season%       季节键名（spring / summer / autumn / winter，见 calendar.month-seasons）
-  #   %world_season_name%  季节显示名（春/夏/秋/冬，见 calendar.season-names）
+  #   %world_season_name%  季节显示名（默认带颜色，见 calendar.season-names）
   #   %x% %y% %z%  玩家坐标（整数）
   #   %ping%       玩家延迟
   #   %tps%        服务器 TPS（保留 1 位小数）
@@ -86,12 +86,12 @@ calendar:
 
   # 季节键名 → 季节显示名（%world_season_name% 输出的就是这里的文本）
   # 键名就是上面 month-seasons 里用的名字；显示名里可以带颜色代码 / MiniMessage 标签，
-  # 与 display-format 的解析规则一致
+  # 与 display-format 的解析规则一致（下面的颜色只是默认值，随便改）
   season-names:
-    spring: "春季"
-    summer: "夏季"
-    autumn: "秋季"
-    winter: "冬季"
+    spring: "&a春季"
+    summer: "&e夏季"
+    autumn: "&6秋季"
+    winter: "&b冬季"
 
 # ------------------------------------------------------------
 # 昼夜时段判定（tick 区间，单位与 world.getTime() 一致：0~24000）
@@ -117,6 +117,31 @@ day-night:
     day: "&a白天"
     sunset: "&6日落"
     night: "&9黑夜"
+
+  # ----------------------------------------------------------
+  # 时间显示乱码：在指定维度里把时间类占位符显示成乱码
+  #   下界与末地没有昼夜循环，getTime() 一直停在 6000 附近不动，
+  #   显示的“游戏时间 / 时段”既不准也没意义，所以默认在这两个维度乱码
+  # ----------------------------------------------------------
+  garbled:
+    # 总开关。false = 所有维度都按正常时间显示
+    enabled: true
+
+    # 生效维度（Bukkit World.Environment 名，大小写不敏感）
+    #   NORMAL = 主世界，NETHER = 下界，THE_END = 末地
+    # 也兼容别名：overworld/world = NORMAL，end = THE_END
+    # 写 dimensions: [] 表示全维度都不乱码（显式空列表不会被当成缺省）
+    dimensions:
+      - NETHER
+      - THE_END
+
+    # 哪些占位符乱码、各自显示成什么文本（键是占位符名，不带 %，写 %gametime% 也认）
+    # 没列出来的占位符保持原样（如 %realtime% 永远正常显示）
+    # 值支持颜色代码：&k 是原版“随机字符”格式，看起来就是一块跳动的乱码块；
+    # 字符个数决定乱码块宽度，想更宽就多写几个（如 &k?????:?????）
+    formats:
+      gametime: "&k??:??"
+      daynight: "&k????"
 
 # ------------------------------------------------------------
 # 群系切换提示

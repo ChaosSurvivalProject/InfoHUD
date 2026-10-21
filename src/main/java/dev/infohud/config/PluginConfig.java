@@ -183,6 +183,7 @@ public final class PluginConfig {
 
     // ---- day-night ----
     private final DayNightRules dayNightRules;
+    private final GarbledTimeRules garbledTimeRules;
 
     // ---- calendar ----
     private final CalendarRules calendarRules;
@@ -258,6 +259,7 @@ public final class PluginConfig {
         // ---------- day-night ----------
         ConfigurationSection dayNight = config.getConfigurationSection("day-night");
         this.dayNightRules = DayNightRules.fromSection(dayNight);
+        this.garbledTimeRules = GarbledTimeRules.fromSection(dayNight);
 
         // ---------- calendar ----------
         this.calendarRules = CalendarRules.fromSection(config.getConfigurationSection("calendar"));
@@ -554,6 +556,11 @@ public final class PluginConfig {
     /** 世界历法（年/月/日换算 + 月份→季节映射）。 */
     public CalendarRules calendarRules() {
         return calendarRules;
+    }
+
+    /** 时间显示乱码规则（指定维度里把时间类占位符换成乱码）。 */
+    public GarbledTimeRules garbledTimeRules() {
+        return garbledTimeRules;
     }
 
     /**

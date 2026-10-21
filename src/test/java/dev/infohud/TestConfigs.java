@@ -50,10 +50,10 @@ public final class TestConfigs {
                     11: autumn
                     12: winter
                   season-names:
-                    spring: "春季"
-                    summer: "夏季"
-                    autumn: "秋季"
-                    winter: "冬季"
+                    spring: "&a春季"
+                    summer: "&e夏季"
+                    autumn: "&6秋季"
+                    winter: "&b冬季"
                 day-night:
                   sunrise-start: 0
                   sunrise-end: 1000
@@ -69,6 +69,14 @@ public final class TestConfigs {
                     day: "&a白天"
                     sunset: "&6日落"
                     night: "&9黑夜"
+                  garbled:
+                    enabled: true
+                    dimensions:
+                      - NETHER
+                      - THE_END
+                    formats:
+                      gametime: "&k??:??"
+                      daynight: "&k????"
                 biome-names:
                   desert: "沙漠"
                   plains: "平原"

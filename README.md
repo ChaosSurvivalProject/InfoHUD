@@ -99,12 +99,37 @@ day-night:
     day: "&a白天"
     sunset: "&6日落"
     night: "&9黑夜"
+  garbled:                 # 指定维度里把时间类占位符显示成乱码
+    enabled: true
+    dimensions:            # Bukkit World.Environment 名；[] = 全维度都不乱码
+      - NETHER
+      - THE_END
+    formats:               # 占位符名 → 乱码文本
+      gametime: "&k??:??"
+      daynight: "&k????"
 ```
 
 判定优先级为 **日出 → 白天 → 日落 → 黑夜**。因为原版 22000~24000 天色已经开始发亮，
 默认 `night-end: 23000` 与尾段日出存在重叠，重叠区按需求算作「日出」；
 想要“23000 之后算黑夜”就把 `sunrise-late-start` 改成 `-1`，同时把 `night-end` 设为 `24000`。
 边界写反（起点大于终点）会自动交换，配置留白时按白天/黑夜兜底，不会出现空档。
+
+#### 时间乱码（`day-night.garbled`）
+
+下界与末地**没有昼夜循环**：`World#getTime()` 一直停在 6000 附近不动，
+所以那里的「游戏时间 / 时段」既不准也没意义。这一节让指定维度里的时间类占位符
+直接显示成乱码，默认就是下界 + 末地：
+
+- `enabled` —— 总开关，`false` 时所有维度都正常显示时间。
+- `dimensions` —— 生效维度，写 Bukkit 的 `World.Environment` 名（`NORMAL` / `NETHER` / `THE_END`，
+  大小写不敏感），也认别名 `overworld`/`world` → `NORMAL`、`end` → `THE_END`。
+  三种写法区分得很清楚：**缺省** → 默认下界+末地；**显式 `dimensions: []`** → 一个维度都不乱码；
+  **全写成无效值** → 退回默认（避免手滑写错就静默失效）。
+- `formats` —— 哪些占位符乱码、各自显示成什么文本。键是占位符名（不带 `%`，
+  写 `%gametime%` 也认），值是文本，支持颜色代码；没列出来的占位符保持原样
+  （`%realtime%`、`%world_days%`、日期/季节等都不受影响）。
+  默认值里用了原版 **`&k` 随机字符格式**，客户端会把它渲染成一块跳动的乱码块；
+  字符个数决定宽度，想更宽就多写几个（如 `&k?????:?????`）。
 
 ### 4.3 `biome-notification` / `biome-names` / `storage`
 
@@ -268,10 +293,10 @@ calendar:
     11: autumn
     12: winter
   season-names:            # 季节键名 → 显示名（可带颜色代码 / MiniMessage）
-    spring: "春季"
-    summer: "夏季"
-    autumn: "秋季"
-    winter: "冬季"
+    spring: "&a春季"
+    summer: "&e夏季"
+    autumn: "&6秋季"
+    winter: "&b冬季"
 ```
 
 - **第 1 天 = `start-year` 年的 1 月 1 日**。换算借用 `java.time.LocalDate`，因此闰年规则
@@ -308,9 +333,9 @@ display-format: "<gradient:#00ffcc:#0088ff>时间</gradient> &f%gametime% &8| &a
 
 | 占位符 | 含义 | 示例 |
 | --- | --- | --- |
-| `%gametime%` | 游戏时间 | `14:30` |
+| `%gametime%` | 游戏时间（下界/末地默认乱码） | `14:30` |
 | `%realtime%` | 现实时间 | `21:45:12` |
-| `%daynight%` | 时段标签 | `白天` |
+| `%daynight%` | 时段标签（下界/末地默认乱码） | `白天` |
 | `%biome%` | 群系显示名 | `沙漠` |
 | `%biome_id%` | 群系原始 ID | `desert` |
 | `%world%` | 世界名 | `world` |
@@ -320,7 +345,7 @@ display-format: "<gradient:#00ffcc:#0088ff>时间</gradient> &f%gametime% &8| &a
 | `%world_day%` | 世界历法日（1~31） | `7` |
 | `%world_date%` | 游戏日期 `yyyy-MM-dd`（年/月/日补零） | `0145-03-07` |
 | `%world_season%` | 季节键名（见 `calendar.month-seasons`） | `spring` |
-| `%world_season_name%` | 季节显示名（见 `calendar.season-names`） | `春季` |
+| `%world_season_name%` | 季节显示名（见 `calendar.season-names`，默认带颜色） | `&a春季` |
 | `%x%` `%y%` `%z%` | 玩家方块坐标 | `128` |
 | `%ping%` | 玩家延迟 | `32` |
 | `%tps%` | 服务器 TPS（1 分钟窗口） | `20.0` |
@@ -350,7 +375,7 @@ display-format: "<gradient:#00ffcc:#0088ff>时间</gradient> &f%gametime% &8| &a
 %infohud_world_day% 世界历法日（1~31）
 %infohud_world_date% 游戏日期（yyyy-MM-dd）
 %infohud_world_season% 当前季节键名（如 spring）
-%infohud_world_season_name% 当前季节显示名（如 春季）
+%infohud_world_season_name% 当前季节显示名（如 &a春季）
 ```
 
 其它插件（全息、计分板、菜单）也能用这些占位符。群系取值来自缓存，**异步解析不会碰区块**。
@@ -404,6 +429,7 @@ src/main/java/dev/infohud/
   Permissions.java                            权限节点常量
   config/PluginConfig.java                    配置快照（不可变，reload 整体替换）
   config/DayNightRules.java                   昼夜时段判定
+  config/GarbledTimeRules.java                时间乱码（指定维度把时间显示成乱码）
   config/CalendarRules.java                   世界历法：天数→年/月/日 + 月份→季节
   config/PreferenceStore.java                 HUD 开关缓存 + 防抖落盘
   time/TimeUtil.java                          游戏/现实时间换算（预生成表）

@@ -112,10 +112,12 @@ public final class InfoHUDExpansion extends PlaceholderExpansion {
 
         switch (key) {
             case "gametime":
-                return TimeUtil.gameTime(online.getWorld().getTime());
+                return garbled(online, config, "gametime",
+                        TimeUtil.gameTime(online.getWorld().getTime()));
             case "daynight":
                 long rawTime = online.getWorld().getTime();
-                return config.dayNightRules().label(config.dayNightRules().phase(rawTime));
+                return garbled(online, config, "daynight",
+                        config.dayNightRules().label(config.dayNightRules().phase(rawTime)));
             case "biome":
             case "biome_name":
                 return BiomeUtil.displayName(plugin.biomes().cachedBiome(online.getUniqueId()), config);
@@ -152,5 +154,13 @@ public final class InfoHUDExpansion extends PlaceholderExpansion {
     /** 当前世界天数换算出的日期与季节。 */
     private static WorldDate worldDate(Player player, PluginConfig config) {
         return config.calendarRules().resolve(TimeUtil.worldDay(player.getWorld().getFullTime()));
+    }
+
+    /**
+     * 时间类占位符按维度做乱码处理（{@code day-night.garbled}）：
+     * 下界/末地没有昼夜循环，按配置显示成乱码文本。
+     */
+    private static String garbled(Player player, PluginConfig config, String placeholder, String original) {
+        return config.garbledTimeRules().apply(player.getWorld().getEnvironment(), placeholder, original);
     }
 }

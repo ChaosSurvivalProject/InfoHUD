@@ -133,13 +133,13 @@ class CalendarRulesTest {
 
         WorldDate first = rules.resolve(1);
         assertEquals("winter", first.season());
-        assertEquals("冬季", first.seasonName());
+        assertEquals("&b冬季", first.seasonName());
 
         // 第 60 天 = 3 月 1 日（平年）→ spring
         WorldDate spring = rules.resolve(daysBefore(3) + 1);
         assertEquals(3, spring.month());
         assertEquals("spring", spring.season());
-        assertEquals("春季", spring.seasonName());
+        assertEquals("&a春季", spring.seasonName());
 
         assertEquals("summer", rules.resolve(daysBefore(6) + 1).season());
         assertEquals("autumn", rules.resolve(daysBefore(9) + 1).season());
@@ -148,7 +148,7 @@ class CalendarRulesTest {
         WorldDate december = rules.resolve(daysBefore(12) + 1);
         assertEquals(12, december.month());
         assertEquals("winter", december.season());
-        assertEquals("冬季", december.seasonName());
+        assertEquals("&b冬季", december.seasonName());
     }
 
     @Test
@@ -177,9 +177,9 @@ class CalendarRulesTest {
         assertEquals("雨季", rules.seasonName("rainy"));
         assertEquals("寒冬", rules.seasonName("cold"));
         assertEquals("春天", rules.seasonName("spring"));
-        // 未改的显示名保留内置默认
-        assertEquals("夏季", rules.seasonName("summer"));
-        assertEquals("冬季", rules.seasonName("winter"));
+        // 未改的显示名保留内置默认（默认带颜色）
+        assertEquals("&e夏季", rules.seasonName("summer"));
+        assertEquals("&b冬季", rules.seasonName("winter"));
         // 完全没配显示名的键名退化成键名本身，不会输出 null
         assertEquals("monsoon", rules.seasonName("monsoon"));
     }

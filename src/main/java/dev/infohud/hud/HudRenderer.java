@@ -10,6 +10,7 @@ import org.bukkit.entity.Player;
 
 import dev.infohud.InfoHUD;
 import dev.infohud.config.DayNightRules;
+import dev.infohud.config.GarbledTimeRules;
 import dev.infohud.config.PluginConfig;
 import dev.infohud.placeholder.PapiBridge;
 import dev.infohud.text.TextUtil;
@@ -109,10 +110,13 @@ public final class HudRenderer {
         }
         long rawTime = world.getTime();
         DayNightRules rules = config.dayNightRules();
+        GarbledTimeRules garbled = config.garbledTimeRules();
+        World.Environment environment = world.getEnvironment();
         long totalDays = TimeUtil.worldDay(world.getFullTime());
+        // 下界/末地没有昼夜循环：按配置把游戏时间与时段标签换成乱码（见 day-night.garbled）
         WorldSnapshot snapshot = new WorldSnapshot(rawTime,
-                TimeUtil.gameTime(rawTime),
-                rules.label(rules.phase(rawTime)),
+                garbled.apply(environment, "gametime", TimeUtil.gameTime(rawTime)),
+                garbled.apply(environment, "daynight", rules.label(rules.phase(rawTime))),
                 Long.toString(totalDays),
                 config.calendarRules().resolve(totalDays));
         tickSnapshots.put(world, snapshot);

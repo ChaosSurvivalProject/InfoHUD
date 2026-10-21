@@ -192,6 +192,11 @@ storage:
 - `biome-names` 内置了 1.21.11 全部原版群系的中文映射（含 `desert_hills`、`snowy_tundra` 等
   1.18 前旧 ID 兼容项）。没配置的群系显示原始英文 ID；自定义群系请写完整键，
   例如 `"mymod:crystal_hills": "水晶丘陵"`。
+- **Terralith 群系已内置**：`biome-names` 里带了 Terralith 数据包的 81 个群系中文名
+  （72 个地表 + 9 个洞穴），键都带 `terralith:` 命名空间，洞穴还多一层路径
+  （如 `"terralith:cave/andesite_caves": "安山岩洞穴"`）。装了 Terralith 就直接显示中文，
+  没装也完全不影响（只是多几行映射）。中文名参考
+  [Terralith 中文资料](https://woopmc.com/index.php?title=Terralith)。
 
 关于 `preferences-in-config`：默认 `false`，个人开关存在 `plugins/InfoHUD/data.yml`，
 由 Bukkit `saveConfig()` 写回 `config.yml` 会**抹掉整个文件的注释**，所以只在需要

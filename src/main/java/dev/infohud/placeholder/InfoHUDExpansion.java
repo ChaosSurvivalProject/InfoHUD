@@ -9,6 +9,7 @@ import org.bukkit.entity.Player;
 import dev.infohud.InfoHUD;
 import dev.infohud.config.PluginConfig;
 import dev.infohud.time.TimeUtil;
+import dev.infohud.time.WorldDate;
 import dev.infohud.util.BiomeUtil;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 
@@ -24,6 +25,10 @@ import me.clip.placeholderapi.expansion.PlaceholderExpansion;
  *   <li>{@code %infohud_biome_id%} —— 当前群系原始 ID</li>
  *   <li>{@code %infohud_world%} —— 当前世界名</li>
  *   <li>{@code %infohud_world_days%} —— 当前世界天数（从 1 开始）</li>
+ *   <li>{@code %infohud_world_year%} / {@code _month%} / {@code _day%} —— 世界历法的年 / 月 / 日；
+ *       {@code %infohud_world_date%} —— 游戏日期（{@code yyyy-MM-dd}）</li>
+ *   <li>{@code %infohud_world_season%} —— 季节键名（如 {@code spring}）；
+ *       {@code %infohud_world_season_name%} —— 季节显示名（如 {@code 春季}）</li>
  * </ul>
  *
  * <p>群系一律取自 {@code BiomeService} 的缓存：PlaceholderAPI 可能在异步线程解析占位符，
@@ -63,16 +68,28 @@ public final class InfoHUDExpansion extends PlaceholderExpansion {
         return true;
     }
 
+    /**
+     * Tab 补全用的占位符清单。
+     *
+     * <p>只列<b>裸变量名</b>（不带 {@code " - 说明"}）：PAPI 的 {@code /papi parse} 补全会把
+     * 整条字符串塞进输入位置，带说明就没法直接用了。各变量的含义见 README 的占位符表。</p>
+     */
     @Override
     public List<String> getPlaceholders() {
         return List.of(
-                "%infohud_gametime% - 游戏时间 HH:MM",
-                "%infohud_realtime% - 现实时间",
-                "%infohud_daynight% - 昼夜时段",
-                "%infohud_biome% - 当前群系显示名",
-                "%infohud_biome_id% - 当前群系 ID",
-                "%infohud_world% - 当前世界名",
-                "%infohud_world_days% - 当前世界天数");
+                "%infohud_gametime%",
+                "%infohud_realtime%",
+                "%infohud_daynight%",
+                "%infohud_biome%",
+                "%infohud_biome_id%",
+                "%infohud_world%",
+                "%infohud_world_days%",
+                "%infohud_world_year%",
+                "%infohud_world_month%",
+                "%infohud_world_day%",
+                "%infohud_world_date%",
+                "%infohud_world_season%",
+                "%infohud_world_season_name%");
     }
 
     @Override
@@ -109,8 +126,31 @@ public final class InfoHUDExpansion extends PlaceholderExpansion {
             case "world_days":
             case "worlddays":
                 return TimeUtil.worldDays(online.getWorld().getFullTime());
+            case "world_year":
+            case "worldyear":
+                return Integer.toString(worldDate(online, config).year());
+            case "world_month":
+            case "worldmonth":
+                return Integer.toString(worldDate(online, config).month());
+            case "world_day":
+            case "worldday":
+                return Integer.toString(worldDate(online, config).day());
+            case "world_date":
+            case "worlddate":
+                return worldDate(online, config).isoDate();
+            case "world_season":
+            case "worldseason":
+                return worldDate(online, config).season();
+            case "world_season_name":
+            case "worldseasonname":
+                return worldDate(online, config).seasonName();
             default:
                 return null;
         }
+    }
+
+    /** 当前世界天数换算出的日期与季节。 */
+    private static WorldDate worldDate(Player player, PluginConfig config) {
+        return config.calendarRules().resolve(TimeUtil.worldDay(player.getWorld().getFullTime()));
     }
 }

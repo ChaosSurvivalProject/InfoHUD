@@ -184,6 +184,9 @@ public final class PluginConfig {
     // ---- day-night ----
     private final DayNightRules dayNightRules;
 
+    // ---- calendar ----
+    private final CalendarRules calendarRules;
+
     // ---- biome-notification ----
     private final boolean notifyEnabled;
     private final String notifyFormat;
@@ -255,6 +258,9 @@ public final class PluginConfig {
         // ---------- day-night ----------
         ConfigurationSection dayNight = config.getConfigurationSection("day-night");
         this.dayNightRules = DayNightRules.fromSection(dayNight);
+
+        // ---------- calendar ----------
+        this.calendarRules = CalendarRules.fromSection(config.getConfigurationSection("calendar"));
 
         // ---------- biome-notification ----------
         // 展示方式一处配置搞定：title / chat / off。
@@ -543,6 +549,11 @@ public final class PluginConfig {
 
     public DayNightRules dayNightRules() {
         return dayNightRules;
+    }
+
+    /** 世界历法（年/月/日换算 + 月份→季节映射）。 */
+    public CalendarRules calendarRules() {
+        return calendarRules;
     }
 
     /**

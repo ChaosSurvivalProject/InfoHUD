@@ -7,12 +7,13 @@
 1. 游戏内时间（24 小时制 `HH:MM`）
 2. 现实世界时间（服务器时区，`HH:MM:SS`）
 3. 当前时段（日出 / 白天 / 日落 / 黑夜，边界可配）
-4. 玩家当前所处生物群系（中文映射可配）
-5. 进入新群系时显示群系名（默认屏幕中央大字，停留 3s；可配成聊天栏或关闭；同一群系 5 分钟内不重复弹）
+5. 世界日期（由天数换算的年/月/日，闰年按现实规则）与季节（月份决定，默认四季）
+6. 玩家当前所处生物群系（中文映射可配）
+7. 进入新群系时显示群系名（默认屏幕中央大字，停留 3s；可配成聊天栏或关闭；同一群系 5 分钟内不重复弹）
 
 **顶部 BossBar（罗盘）** 持续显示方向指示
 
-6. 以当前朝向为中心的 180° 刻度窗口：N/E/S/W + 30° 角度数字 + 5° 圆点，正中高亮刻度即方向，进度条位置即指针，随玩家视角转向实时更新
+8. 以当前朝向为中心的 180° 刻度窗口：N/E/S/W + 30° 角度数字 + 5° 圆点，正中高亮刻度即方向，进度条位置即指针，随玩家视角转向实时更新
 
 **客户端不需要安装任何东西**，原版客户端即可看到全部信息。目标服务端：Purpur 1.21.11，同 jar 兼容 Paper 1.21.11。
 
@@ -70,10 +71,10 @@
 | --- | --- | --- |
 | `enabled-by-default` | `true` | 玩家没有个人偏好时的默认开关 |
 | `update-interval-ticks` | `20` | ActionBar 刷新间隔；**最小 10**（0.5 秒），填更小会被抬到 10，上限 200 |
-| `display-format` | 见文件 | 显示模板，占位符见 4.5 |
+| `display-format` | 见文件 | 显示模板，占位符见 4.8 |
 | `realtime-format` | `HH:mm:ss` | 现实时间格式（Java `DateTimeFormatter` 模式） |
 | `timezone` | `Asia/Shanghai` | IANA 时区名；写错自动回退系统时区并在控制台告警 |
-| `text-mode` | `auto` | `auto` / `legacy` / `minimessage`，见 4.4 |
+| `text-mode` | `auto` | `auto` / `legacy` / `minimessage`，见 4.7 |
 | `ampersand-colors` | `true` | 是否把 `&` 当颜色代码（关掉后只有 `§` 生效） |
 | `placeholderapi-parse` | `true` | 装了 PlaceholderAPI 时，把最终文本再交给 PAPI 解析一次 |
 | `cache-components` | `true` | 同一轮刷新内复用解析好的组件（人多时明显省 CPU） |
@@ -246,7 +247,50 @@ blacklist:                      # 名单内的实体类型不显示血条
 - `/infohud toggle healthbar` 只影响**自己**的血条，且对已经在显示的立即生效：
   关掉立刻摘掉自己的，打开立刻补上自己的；别人的血条不受影响。
 
-### 4.6 颜色格式
+### 4.6 `calendar`（世界历法与季节）
+
+把 `%world_days%`（世界天数）进一步换算成**年 / 月 / 日**，并由月份得出**季节**：
+
+```yaml
+calendar:
+  start-year: 1            # 世界第 1 天对应哪一年（默认 1；想对齐现实可写 1900）
+  month-seasons:           # 月份 → 季节键名（也支持 [winter, winter, spring, ...] 列表写法）
+    1: winter
+    2: winter
+    3: spring
+    4: spring
+    5: spring
+    6: summer
+    7: summer
+    8: summer
+    9: autumn
+    10: autumn
+    11: autumn
+    12: winter
+  season-names:            # 季节键名 → 显示名（可带颜色代码 / MiniMessage）
+    spring: "春季"
+    summer: "夏季"
+    autumn: "秋季"
+    winter: "冬季"
+```
+
+- **第 1 天 = `start-year` 年的 1 月 1 日**。换算借用 `java.time.LocalDate`，因此闰年规则
+  与现实**完全一致**：能被 4 整除但不能被 100 整除的年份是闰年，能被 400 整除的仍是闰年
+  —— **1900 年不是闰年**（2 月 28 天），**2000 年是闰年**（2 月 29 天）。
+  `start-year` 默认 `1`（历法与日常年份通常从 1 开始），取值会被夹在公历可表示的范围内。
+- **季节只用键名表达，没有下标**：`month-seasons` 给“月份 → 季节键名”，`season-names`
+  给“季节键名 → 显示名”。默认 12/1/2 月 = `winter`、3/4/5 月 = `spring`、
+  6/7/8 月 = `summer`、9/10/11 月 = `autumn`。
+- 两处都**只写想改的项**即可：没写的月份保留默认映射，没写的键名保留内置显示名
+  （春/夏/秋/冬）；完全没配显示名的键名退化成键名本身，不会输出 `null`。
+- **键名大小写不敏感**（写 `Winter` 也认），内部统一转小写，所以 `%world_season%`
+  永远输出小写键名，可以直接做等值判断；想加自定义季节就自造键名
+  （如 `rainy: 雨季`），把对应月份指过去即可。
+- 年/月/日**不补零**（`%world_month%` → `3`，不是 `03`），与 `%world_days%` 的写法一致；
+  想显示定长的 `2025-03-07` 就用 **`%world_date%`** —— 固定输出 `yyyy-MM-dd`，
+  年/月/日都补齐两位以上（`0001-03-07`、`1900-01-01`）。
+
+### 4.7 颜色格式
 
 同一行里可以混写传统代码和 MiniMessage 标签：
 
@@ -260,7 +304,7 @@ display-format: "<gradient:#00ffcc:#0088ff>时间</gradient> &f%gametime% &8| &a
 - `text-mode: minimessage` —— 强制 MiniMessage。
 - 十六进制：传统写法 `&#RRGGBB`，或 MiniMessage 的 `<color:#RRGGBB>`。
 
-### 4.7 占位符
+### 4.8 占位符
 
 | 占位符 | 含义 | 示例 |
 | --- | --- | --- |
@@ -271,10 +315,19 @@ display-format: "<gradient:#00ffcc:#0088ff>时间</gradient> &f%gametime% &8| &a
 | `%biome_id%` | 群系原始 ID | `desert` |
 | `%world%` | 世界名 | `world` |
 | `%world_days%` | 世界天数（从 1 开始） | `128` |
+| `%world_year%` | 世界历法年份 | `1` |
+| `%world_month%` | 世界历法月份（1~12） | `5` |
+| `%world_day%` | 世界历法日（1~31） | `7` |
+| `%world_date%` | 游戏日期 `yyyy-MM-dd`（年/月/日补零） | `0145-03-07` |
+| `%world_season%` | 季节键名（见 `calendar.month-seasons`） | `spring` |
+| `%world_season_name%` | 季节显示名（见 `calendar.season-names`） | `春季` |
 | `%x%` `%y%` `%z%` | 玩家方块坐标 | `128` |
 | `%ping%` | 玩家延迟 | `32` |
 | `%tps%` | 服务器 TPS（1 分钟窗口） | `20.0` |
 | `%player%` | 玩家名（仅提示模板） | `Steve` |
+
+日期与季节都来自 `%world_days%`（即 `World#getFullTime() / 24000 + 1`），
+所以世界里所有人看到的年月日与季节完全一致，`/infohud reload` 改完配置立即生效。
 
 提示模板（`message-format` 与 `center-title`）支持 `%biome%`、`%biome_id%`、`%player%`。
 
@@ -292,9 +345,17 @@ display-format: "<gradient:#00ffcc:#0088ff>时间</gradient> &f%gametime% &8| &a
 %infohud_biome_id%   当前群系 ID
 %infohud_world%      当前世界名
 %infohud_world_days% 当前世界天数（从 1 开始）
+%infohud_world_year% 世界历法年份
+%infohud_world_month% 世界历法月份（1~12）
+%infohud_world_day% 世界历法日（1~31）
+%infohud_world_date% 游戏日期（yyyy-MM-dd）
+%infohud_world_season% 当前季节键名（如 spring）
+%infohud_world_season_name% 当前季节显示名（如 春季）
 ```
 
 其它插件（全息、计分板、菜单）也能用这些占位符。群系取值来自缓存，**异步解析不会碰区块**。
+在游戏里输入 `/papi parse me %infohud_` 时，Tab 补全只给**裸变量名**（不带说明文字），
+可以直接选；各变量的含义看上面这张表。
 反向集成也支持：在 `display-format` 里写 `%player_name%` 之类的 PAPI 占位符即可
 （由 `hud.placeholderapi-parse` 控制）。
 
@@ -343,9 +404,11 @@ src/main/java/dev/infohud/
   Permissions.java                            权限节点常量
   config/PluginConfig.java                    配置快照（不可变，reload 整体替换）
   config/DayNightRules.java                   昼夜时段判定
+  config/CalendarRules.java                   世界历法：天数→年/月/日 + 月份→季节
   config/PreferenceStore.java                 HUD 开关缓存 + 防抖落盘
   time/TimeUtil.java                          游戏/现实时间换算（预生成表）
   time/DayNightPhase.java                     时段枚举
+  time/WorldDate.java                         世界日期结果（年/月/日 + 季节）
   util/BiomeUtil.java                         群系读取、ID 与显示名
   biome/BiomeService.java                     群系缓存、切换判定、提示发送
   biome/BiomeMemory.java                      群系记忆（内存：玩家+群系 冷却，防重复展示）

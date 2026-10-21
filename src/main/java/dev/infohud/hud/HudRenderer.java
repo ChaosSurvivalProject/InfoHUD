@@ -67,6 +67,13 @@ public final class HudRenderer {
                 "%realtime%", context.realtime(),
                 "%daynight%", snapshot.dayNightLabel(),
                 "%world_days%", snapshot.worldDays(),
+                // 日期与季节：先填带下划线的长名字，避免短名字先命中
+                "%world_year%", snapshot.worldYear(),
+                "%world_month%", snapshot.worldMonth(),
+                "%world_day%", snapshot.worldDay(),
+                "%world_date%", snapshot.worldDate(),
+                "%world_season_name%", snapshot.worldSeasonName(),
+                "%world_season%", snapshot.worldSeason(),
                 // 注意顺序：先替换更长的 %biome_id%，再替换 %biome%
                 "%biome_id%", BiomeUtil.idOf(biome),
                 "%biome%", BiomeUtil.displayName(biome, config),
@@ -102,10 +109,12 @@ public final class HudRenderer {
         }
         long rawTime = world.getTime();
         DayNightRules rules = config.dayNightRules();
+        long totalDays = TimeUtil.worldDay(world.getFullTime());
         WorldSnapshot snapshot = new WorldSnapshot(rawTime,
                 TimeUtil.gameTime(rawTime),
                 rules.label(rules.phase(rawTime)),
-                TimeUtil.worldDays(world.getFullTime()));
+                Long.toString(totalDays),
+                config.calendarRules().resolve(totalDays));
         tickSnapshots.put(world, snapshot);
         return snapshot;
     }
@@ -119,6 +128,13 @@ public final class HudRenderer {
                 "%realtime%", TimeUtil.realTime(config.timezone(), config.realtimeFormatter()),
                 "%daynight%", snapshot.dayNightLabel(),
                 "%world_days%", snapshot.worldDays(),
+                // 日期与季节：先填带下划线的长名字，避免短名字先命中
+                "%world_year%", snapshot.worldYear(),
+                "%world_month%", snapshot.worldMonth(),
+                "%world_day%", snapshot.worldDay(),
+                "%world_date%", snapshot.worldDate(),
+                "%world_season_name%", snapshot.worldSeasonName(),
+                "%world_season%", snapshot.worldSeason(),
                 // 注意顺序：先替换更长的 %biome_id%，再替换 %biome%
                 "%biome_id%", BiomeUtil.idOf(biome),
                 "%biome%", BiomeUtil.displayName(biome, config),

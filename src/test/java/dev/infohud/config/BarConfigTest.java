@@ -20,7 +20,7 @@ import dev.infohud.TestConfigs;
 class BarConfigTest {
 
     @Test
-    @DisplayName("缺省配置：血条开、存活 3 秒 / 死亡 1 秒、RED、PROGRESS(实心)、默认黑名单 4 项")
+    @DisplayName("缺省配置：血条开、存活 3 秒 / 死亡 1 秒、RED、PROGRESS(实心)、默认黑名单 3 项（不含 PLAYER）")
     void defaultsWhenSectionMissing() {
         PluginConfig config = TestConfigs.config("");
         assertTrue(config.healthBarEnabled());
@@ -28,7 +28,7 @@ class BarConfigTest {
         assertEquals(20, config.healthBarDeadTimeTicks());
         assertEquals(BarColor.RED, config.healthBarColor());
         assertEquals(BarStyle.SOLID, config.healthBarOverlay());
-        assertEquals(Set.of("ENDER_DRAGON", "WITHER", "PLAYER", "ARMOR_STAND"),
+        assertEquals(Set.of("ENDER_DRAGON", "WITHER", "ARMOR_STAND"),
                 config.healthBarBlacklist());
         assertTrue(config.healthBarLivingTitle().contains("<health>"), "默认存活标题应含占位符");
         assertTrue(config.healthBarDeadTitle().contains("☠"), "默认死亡标题应含 ☠");
@@ -129,10 +129,10 @@ class BarConfigTest {
     }
 
     @Test
-    @DisplayName("空 / 缺失的黑名单回退默认 4 项")
+    @DisplayName("空 / 缺失的黑名单回退默认 3 项（PLAYER 默认不在名单内，玩家受击也显示血条）")
     void emptyBlacklistFallsBackToDefault() {
         // getStringList 区分不了 “写了空表” 和 “没写”，两种情况都回退默认黑名单
-        List<String> defaults = List.of("ENDER_DRAGON", "WITHER", "PLAYER", "ARMOR_STAND");
+        List<String> defaults = List.of("ENDER_DRAGON", "WITHER", "ARMOR_STAND");
         assertTrue(TestConfigs.config("blacklist: []\n").healthBarBlacklist().containsAll(defaults));
         assertTrue(TestConfigs.config("").healthBarBlacklist().containsAll(defaults));
     }

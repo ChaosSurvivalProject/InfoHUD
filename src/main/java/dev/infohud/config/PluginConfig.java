@@ -167,8 +167,9 @@ public final class PluginConfig {
     private static final int DEFAULT_BAR_DEAD_TIME_TICKS = 20;
     private static final int MIN_BAR_TIME_TICKS = 20;
     private static final int MAX_BAR_TIME_TICKS = 2000;
+    /** 默认黑名单：只排除 BOSS 级与盔甲架；玩家默认要显示血条（<name> 会显示他的游戏 ID）。 */
     private static final List<String> DEFAULT_BAR_BLACKLIST =
-            List.of("ENDER_DRAGON", "WITHER", "PLAYER", "ARMOR_STAND");
+            List.of("ENDER_DRAGON", "WITHER", "ARMOR_STAND");
 
     // ---- hud ----
     private final boolean enabledByDefault;
@@ -219,6 +220,8 @@ public final class PluginConfig {
     private final int healthBarTimeTicks;
     private final int healthBarDeadTimeTicks;
     private final Set<String> healthBarBlacklist;
+    /** 伤害归因调试日志开关（debug.show-damage-attribution）。 */
+    private final boolean debugExplosionAttribution;
 
     // ---- storage ----
     private final boolean preferencesInConfig;
@@ -334,6 +337,8 @@ public final class PluginConfig {
         List<String> rawBlacklist = config.getStringList("blacklist");
         this.healthBarBlacklist = readBarBlacklist(
                 rawBlacklist.isEmpty() ? DEFAULT_BAR_BLACKLIST : rawBlacklist);
+        // 伤害归因调试日志（排查爆炸弓等 RPG 武器血条不显示时临时开启）
+        this.debugExplosionAttribution = config.getBoolean("debug.show-damage-attribution", false);
 
         // ---------- storage ----------
         this.preferencesInConfig = config.getBoolean("storage.preferences-in-config", false);
@@ -718,6 +723,11 @@ public final class PluginConfig {
     /** 血条黑名单（大写归一化后的实体类型名；空表 = 不过滤）。 */
     public Set<String> healthBarBlacklist() {
         return healthBarBlacklist;
+    }
+
+    /** 伤害归因调试日志开关（debug.show-damage-attribution，排查爆炸弓等 RPG 武器时临时开启）。 */
+    public boolean debugExplosionAttribution() {
+        return debugExplosionAttribution;
     }
 
     public boolean preferencesInConfig() {

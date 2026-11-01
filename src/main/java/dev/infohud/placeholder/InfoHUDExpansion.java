@@ -49,7 +49,7 @@ public final class InfoHUDExpansion extends PlaceholderExpansion {
 
     @Override
     public String getAuthor() {
-        return "AutoMods";
+        return "Floyd";
     }
 
     @Override

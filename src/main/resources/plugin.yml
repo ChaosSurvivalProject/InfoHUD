@@ -4,8 +4,8 @@ name: InfoHUD
 version: '${version}'
 main: dev.infohud.InfoHUD
 api-version: '1.21'
-description: 在 ActionBar 上实时显示游戏时间、现实时间、昼夜状态与生物群系，在顶部 BossBar 显示方向罗盘，为受击生物显示独立 BossBar 血条
-author: AutoMods
+description: Action bar time/biome HUD, boss bar compass, and mob health bars.
+author: Floyd
 load: POSTWORLD
 
 # PlaceholderAPI 只是可选集成：没装也能正常跑

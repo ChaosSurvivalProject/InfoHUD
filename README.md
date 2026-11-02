@@ -1,5 +1,7 @@
 # InfoHUD
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 轻量级 **服务端** 实时信息 HUD 插件，两块显示区**各自独立开关**：
 
 **底部 ActionBar（信息栏）** 持续显示
@@ -498,3 +500,9 @@ A：可以。插件只用 Paper API，Purpur 完整兼容；同一 jar 在 Paper
 
 **Q：支持 1.20.x 吗？**
 A：不支持。`api-version: 1.21` + Java 21 字节码，换版本请按第六节重新编译。
+
+---
+
+## 九、许可证
+
+本项目基于 [MIT 协议](LICENSE) 开源，Copyright (c) 2026 Floyd。

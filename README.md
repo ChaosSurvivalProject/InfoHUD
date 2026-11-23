@@ -1,5 +1,10 @@
 # InfoHUD
 
+<p align="center">
+  <img src="assets/images/banner.png" alt="InfoHUD 宣传图" width="820">
+</p>
+
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 轻量级 **服务端** 实时信息 HUD 插件，两块显示区**各自独立开关**：
@@ -20,6 +25,13 @@
 **客户端不需要安装任何东西**，原版客户端即可看到全部信息。目标服务端：Purpur 1.21.11，同 jar 兼容 Paper 1.21.11。
 
 ---
+
+## 效果预览
+
+<p align="center">
+  <img src="assets/images/demo.png" alt="InfoHUD 演示图" width="720">
+</p>
+
 
 ## 一、安装
 
